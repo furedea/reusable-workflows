@@ -42,13 +42,24 @@ jobs:
       - name: Run deadnix
         run: nix run nixpkgs#deadnix -- --fail .
 
+  claude-review:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/claude-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
   all-green:
     if: always()
-    needs: [nix-lint]
+    needs: [nix-lint, claude-review]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions: {}
     steps:
+      # claude-review is skipped by design outside same-repository pull requests,
+      # so only a skip on pull_request counts as a failure for it.
       - name: Fail if any prerequisite did not succeed
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || needs.nix-lint.result == 'skipped' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.claude-review.result == 'skipped')
         run: exit 1
