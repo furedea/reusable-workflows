@@ -50,9 +50,18 @@ jobs:
     secrets:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
+  codex-review:
+    uses: ./.github/workflows/codex-review.yml
+    permissions: {}
+    secrets:
+      codex_review_token: ${{ secrets.CODEX_REVIEW_TOKEN }}
+
   all-green:
     if: always()
-    needs: [nix-lint, claude-review]
+    needs:
+      - nix-lint
+      - claude-review
+      - codex-review
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions: {}
