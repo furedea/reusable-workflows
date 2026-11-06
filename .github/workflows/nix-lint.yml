@@ -1,0 +1,37 @@
+name: Nix lint (reusable)
+
+on:
+  workflow_call:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  nix-lint:
+    name: nix-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - name: Run nixfmt
+        run: |
+          mapfile -t files < <(git ls-files "*.nix")
+          ((${#files[@]} == 0)) || nix run nixpkgs#nixfmt -- --check "${files[@]}"
+
+      - name: Run statix
+        run: nix run nixpkgs#statix -- check .
+
+      - name: Run deadnix
+        run: nix run nixpkgs#deadnix -- --fail .

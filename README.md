@@ -58,3 +58,53 @@ jobs:
 Add `codex-review` to `all-green`'s `needs`. The caller needs the repository secret `CODEX_REVIEW_TOKEN`: a
 fine-grained token of the owner with only Pull requests read and write. In the Codex settings, keep the
 repository's automatic review on "Follow personal preferences".
+
+## gha-lint.yml
+
+Lints the workflows with actionlint (with shellcheck and pyflakes) and zizmor. The optional input
+`workflow-template-dir` names a directory of workflow templates (`*.yml`) that are checked as well.
+
+```yaml
+jobs:
+    gha-lint:
+        uses: furedea/reusable-workflows/.github/workflows/gha-lint.yml@<full-commit-sha> # <ref>
+        permissions:
+            actions: read
+            contents: read
+        with:
+            workflow-template-dir: templates # optional
+```
+
+Add `gha-lint` to `all-green`'s `needs`.
+
+## dependency-review.yml
+
+Fails a pull request that adds a dependency with a vulnerability at or above `fail-on-severity` (default
+`high`). The review runs only for `pull_request` events of public repositories; in every other case the
+caller job still succeeds, so callers need no `if`.
+
+```yaml
+jobs:
+    dependency-review:
+        uses: furedea/reusable-workflows/.github/workflows/dependency-review.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+        with:
+            fail-on-severity: high # optional
+```
+
+Add `dependency-review` to `all-green`'s `needs`.
+
+## nix-lint.yml
+
+Checks Nix files with nixfmt (tracked `*.nix` files), statix, and deadnix (`--fail`).
+
+```yaml
+jobs:
+    nix-lint:
+        uses: furedea/reusable-workflows/.github/workflows/nix-lint.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+```
+
+Add `nix-lint` to `all-green`'s `needs`.
