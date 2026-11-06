@@ -51,18 +51,25 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - name: Request a review
-        run: gh pr comment "$PR_NUMBER" --repo "$REPO" --body "@codex review"
+        id: request
+        run: |
+          echo "requested_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$GITHUB_OUTPUT"
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "@codex review"
 
       # Codex keeps one summary comment per pull request and records its state in
-      # <!-- codex-review-state:v1 {...} -->. Wait until that state is for HEAD_SHA.
+      # <!-- codex-review-state:v1 {...} -->. Wait until that comment is updated after this
+      # request (so a re-run never reads an old verdict) and its state is for HEAD_SHA.
+      # A failed API call is retried on the next poll instead of ending the wait.
       - name: Wait for the review of the head commit
         id: wait
+        env:
+          REQUESTED_AT: ${{ steps.request.outputs.requested_at }}
         run: |
           deadline=$((SECONDS + 20 * 60))
           while ((SECONDS < deadline)); do
             state="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-              --jq '.[] | select(.user.login == "chatgpt-codex-connector[bot]") | .body' \
-              | sed -n 's/.*<!-- codex-review-state:v1 \(.*\) -->.*/\1/p' | tail -n 1)"
+              --jq '.[] | select(.user.login == "chatgpt-codex-connector[bot]" and .updated_at >= env.REQUESTED_AT) | .body' \
+              | sed -n 's/.*<!-- codex-review-state:v1 \(.*\) -->.*/\1/p' | tail -n 1)" || state=""
             sha="$(jq -r '.code_review.commit_sha // empty' <<<"$state" 2>/dev/null || true)"
             status="$(jq -r '.code_review.status // empty' <<<"$state" 2>/dev/null || true)"
             if [[ "$sha" == "$HEAD_SHA" && ( "$status" == "completed" || "$status" == "failed" ) ]]; then
@@ -75,6 +82,7 @@ jobs:
           echo "status=timeout" >>"$GITHUB_OUTPUT"
 
       - name: Fail unless the review passed
+        if: always()
         env:
           STATUS: ${{ steps.wait.outputs.status }}
           UNRESOLVED: ${{ steps.wait.outputs.unresolved }}
