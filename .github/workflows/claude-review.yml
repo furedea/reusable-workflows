@@ -23,28 +23,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions: {}
+    # Only same-repository pull requests (secrets are not passed to forks), and not
+    # those opened by a bot other than furedea-agent (the action rejects other bots).
+    # This job always succeeds so the caller job is never reported as skipped.
     outputs:
-      run: ${{ steps.decide.outputs.run }}
+      run: >-
+        ${{ github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository
+        && (github.event.pull_request.user.type != 'Bot'
+        || github.event.pull_request.user.login == 'furedea-agent[bot]') }}
     steps:
-      # Only same-repository pull requests (secrets are not passed to forks), and not
-      # those opened by a bot other than furedea-agent (the action rejects other bots).
-      # This job always succeeds so the caller job is never reported as skipped.
-      - name: Decide
-        id: decide
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          REPO: ${{ github.repository }}
-          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
-          AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
-        run: |
-          run=false
-          if [[ "$EVENT_NAME" == "pull_request" && "$HEAD_REPO" == "$REPO" ]] \
-            && [[ "$AUTHOR_TYPE" != "Bot" || "$AUTHOR_LOGIN" == "furedea-agent[bot]" ]]; then
-            run=true
-          fi
-          echo "run=$run" >>"$GITHUB_OUTPUT"
-          echo "Review: $run" >>"$GITHUB_STEP_SUMMARY"
+      - name: No-op
+        run: "true"
 
   review:
     name: Claude review
