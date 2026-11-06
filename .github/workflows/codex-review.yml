@@ -1,0 +1,92 @@
+name: Codex review (reusable)
+
+on:
+  workflow_call:
+    secrets:
+      codex_review_token:
+        description: >-
+          Fine-grained token of the repository owner (Pull requests: read and write).
+          Codex ignores review requests from bots, so the request is posted as the owner.
+        required: true
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: codex-review-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  should-review:
+    name: Decide whether to review
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions: {}
+    # Same rule as claude-review: same-repository pull requests that a human or furedea-agent opened.
+    # This job always succeeds so the caller job is never reported as skipped.
+    outputs:
+      run: >-
+        ${{ github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository
+        && (github.event.pull_request.user.type != 'Bot'
+        || github.event.pull_request.user.login == 'furedea-agent[bot]') }}
+    steps:
+      - name: No-op
+        run: "true"
+
+  review:
+    name: Codex review
+    needs: should-review
+    if: needs.should-review.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions: {}
+    env:
+      GH_TOKEN: ${{ secrets.codex_review_token }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Request a review
+        run: gh pr comment "$PR_NUMBER" --repo "$REPO" --body "@codex review"
+
+      # Codex keeps one summary comment per pull request and records its state in
+      # <!-- codex-review-state:v1 {...} -->. Wait until that state is for HEAD_SHA.
+      - name: Wait for the review of the head commit
+        id: wait
+        run: |
+          deadline=$((SECONDS + 20 * 60))
+          while ((SECONDS < deadline)); do
+            state="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+              --jq '.[] | select(.user.login == "chatgpt-codex-connector[bot]") | .body' \
+              | sed -n 's/.*<!-- codex-review-state:v1 \(.*\) -->.*/\1/p' | tail -n 1)"
+            sha="$(jq -r '.code_review.commit_sha // empty' <<<"$state" 2>/dev/null || true)"
+            status="$(jq -r '.code_review.status // empty' <<<"$state" 2>/dev/null || true)"
+            if [[ "$sha" == "$HEAD_SHA" && ( "$status" == "completed" || "$status" == "failed" ) ]]; then
+              echo "status=$status" >>"$GITHUB_OUTPUT"
+              echo "unresolved=$(jq -r '.code_review.has_unresolved_findings' <<<"$state")" >>"$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "status=timeout" >>"$GITHUB_OUTPUT"
+
+      - name: Fail unless the review passed
+        env:
+          STATUS: ${{ steps.wait.outputs.status }}
+          UNRESOLVED: ${{ steps.wait.outputs.unresolved }}
+        run: |
+          case "$STATUS:$UNRESOLVED" in
+            completed:false) echo "Codex review of $HEAD_SHA: no unresolved findings." >>"$GITHUB_STEP_SUMMARY" ;;
+            completed:*) message="Codex left unresolved findings on $HEAD_SHA. Fix them, or resolve a refuted one with evidence in its thread." ;;
+            failed:*) message="Codex could not review $HEAD_SHA (for example, usage limits). Read its summary comment on the pull request." ;;
+            *) message="Codex did not review $HEAD_SHA within 20 minutes. Check the Codex connector settings and that the token is valid (\`repo review-token rotate\`)." ;;
+          esac
+          if [[ -n "${message:-}" ]]; then
+            echo "$message" >>"$GITHUB_STEP_SUMMARY"
+            echo "::error::$message"
+            exit 1
+          fi

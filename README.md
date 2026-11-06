@@ -35,3 +35,26 @@ jobs:
 ```
 
 The caller needs the repository secret `CLAUDE_CODE_OAUTH_TOKEN`.
+
+## codex-review.yml
+
+Asks the Codex GitHub connector to review every same-repository pull request, on open and on every push, and
+waits for its result. Codex ignores review requests from bots and charges repository-wide automatic reviews to
+credits, so the workflow posts `@codex review` with the repository owner's token; the review then runs on the
+owner's ChatGPT plan. The job reads the `codex-review-state` that Codex records in its summary comment and
+fails when the review of the head commit has unresolved findings, when Codex reports a failure (for example
+usage limits), or when no review arrives within 20 minutes. It skips the same pull requests as
+`claude-review.yml`.
+
+```yaml
+jobs:
+    codex-review:
+        uses: furedea/reusable-workflows/.github/workflows/codex-review.yml@<full-commit-sha> # <ref>
+        permissions: {}
+        secrets:
+            codex_review_token: ${{ secrets.CODEX_REVIEW_TOKEN }}
+```
+
+Add `codex-review` to `all-green`'s `needs`. The caller needs the repository secret `CODEX_REVIEW_TOKEN`: a
+fine-grained token of the owner with only Pull requests read and write. In the Codex settings, keep the
+repository's automatic review on "Follow personal preferences".
