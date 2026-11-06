@@ -17,25 +17,24 @@ defaults:
     shell: bash
 
 jobs:
-  # Local reusable workflows are called with ./ so that a pull request tests its own versions.
   gha-lint:
-    uses: ./.github/workflows/gha-lint.yml # zizmor: ignore[self-repository]
+    uses: $/.github/workflows/gha-lint.yml
     permissions:
       actions: read
       contents: read
 
   dependency-review:
-    uses: ./.github/workflows/dependency-review.yml # zizmor: ignore[self-repository]
+    uses: $/.github/workflows/dependency-review.yml
     permissions:
       contents: read
 
   nix-lint:
-    uses: ./.github/workflows/nix-lint.yml # zizmor: ignore[self-repository]
+    uses: $/.github/workflows/nix-lint.yml
     permissions:
       contents: read
 
   claude-review:
-    uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]
+    uses: $/.github/workflows/claude-review.yml
     permissions:
       contents: read
       pull-requests: write
@@ -43,7 +42,7 @@ jobs:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
   codex-review:
-    uses: ./.github/workflows/codex-review.yml # zizmor: ignore[self-repository]
+    uses: $/.github/workflows/codex-review.yml
     permissions: {}
     secrets:
       codex_review_token: ${{ secrets.CODEX_REVIEW_TOKEN }}
