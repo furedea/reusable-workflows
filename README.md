@@ -2,6 +2,22 @@
 
 Reusable GitHub Actions workflows (`on: workflow_call`) shared by furedea repositories.
 
+## Workflows in this repository
+
+Shared workflows, called from the `ci.yml` of other repositories (each has a section below):
+
+- `claude-review.yml`
+- `codex-review.yml`
+- `gha-lint.yml`
+- `dependency-review.yml`
+- `nix-lint.yml`
+
+Workflows for this repository only, not meant to be called from elsewhere:
+
+- `ci.yml` calls the shared workflows above, so that a pull request here tests its own versions, and gates
+  merging on `all-green`.
+- `codeql.yml` runs CodeQL on public repositories.
+
 ## claude-review.yml
 
 Reviews every same-repository pull request with Claude Code. It posts P0 to P3 findings as inline comments
