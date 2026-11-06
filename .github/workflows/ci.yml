@@ -23,6 +23,15 @@ jobs:
       actions: read
       contents: read
 
+  # Exercises the workflow-template-dir input against a fixture.
+  gha-lint-templates:
+    uses: ./.github/workflows/gha-lint.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
+      workflow-template-dir: .github/test-templates
+
   dependency-review:
     uses: ./.github/workflows/dependency-review.yml
     permissions:
@@ -51,6 +60,7 @@ jobs:
     if: always()
     needs:
       - gha-lint
+      - gha-lint-templates
       - dependency-review
       - nix-lint
       - claude-review
