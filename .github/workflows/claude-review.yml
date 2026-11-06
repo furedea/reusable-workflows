@@ -20,8 +20,13 @@ concurrency:
 jobs:
   review:
     name: Claude review
-    # Secrets are not passed to forks, so skip them.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Only same-repository pull requests (secrets are not passed to forks), and not
+    # those opened by a bot other than furedea-agent (the action rejects other bots).
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && (github.event.pull_request.user.type != 'Bot'
+      || github.event.pull_request.user.login == 'furedea-agent[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
