@@ -43,7 +43,7 @@ jobs:
         run: nix run nixpkgs#deadnix -- --fail .
 
   claude-review:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.login == 'furedea-agent[bot]')
     uses: ./.github/workflows/claude-review.yml
     permissions:
       contents: read
@@ -58,8 +58,9 @@ jobs:
     timeout-minutes: 1
     permissions: {}
     steps:
-      # claude-review is skipped by design outside same-repository pull requests,
-      # so only a skip on pull_request counts as a failure for it.
+      # claude-review is skipped by design outside same-repository pull requests and
+      # for pull requests by bots other than furedea-agent, so a skip counts as a
+      # failure only when the job's own if condition held.
       - name: Fail if any prerequisite did not succeed
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || needs.nix-lint.result == 'skipped' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.claude-review.result == 'skipped')
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || needs.nix-lint.result == 'skipped' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.login == 'furedea-agent[bot]') && needs.claude-review.result == 'skipped')
         run: exit 1
