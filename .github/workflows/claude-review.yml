@@ -18,15 +18,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  review:
-    name: Claude review
+  should-review:
+    name: Decide whether to review
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions: {}
     # Only same-repository pull requests (secrets are not passed to forks), and not
     # those opened by a bot other than furedea-agent (the action rejects other bots).
-    if: >-
-      github.event_name == 'pull_request'
-      && github.event.pull_request.head.repo.full_name == github.repository
-      && (github.event.pull_request.user.type != 'Bot'
-      || github.event.pull_request.user.login == 'furedea-agent[bot]')
+    # This job always succeeds so the caller job is never reported as skipped.
+    outputs:
+      run: >-
+        ${{ github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository
+        && (github.event.pull_request.user.type != 'Bot'
+        || github.event.pull_request.user.login == 'furedea-agent[bot]') }}
+    steps:
+      - name: No-op
+        run: "true"
+
+  review:
+    name: Claude review
+    needs: should-review
+    if: needs.should-review.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
