@@ -42,9 +42,17 @@ jobs:
       - name: Run deadnix
         run: nix run nixpkgs#deadnix -- --fail .
 
+  claude-review:
+    uses: ./.github/workflows/claude-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
   all-green:
     if: always()
-    needs: [nix-lint]
+    needs: [nix-lint, claude-review]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions: {}
