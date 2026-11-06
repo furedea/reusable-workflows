@@ -39,7 +39,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}
-          allowed_bots: furedea-agent
+          allowed_bots: furedea-agent,renovate[bot]
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
