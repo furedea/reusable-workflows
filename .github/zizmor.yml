@@ -1,0 +1,5 @@
+rules:
+  self-repository:
+    ignore:
+      # Local reusable workflows are called with ./ so that a pull request tests its own versions.
+      - ci.yml
