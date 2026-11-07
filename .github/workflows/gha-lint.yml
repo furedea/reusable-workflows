@@ -1,0 +1,79 @@
+name: GitHub Actions lint (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      workflow-template-dir:
+        description: Directory of workflow templates (*.yml) to lint in addition to .github/workflows. Empty to skip.
+        type: string
+        required: false
+        default: ""
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run actionlint
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          fail-on-error: true
+          shellcheck: true
+          pyflakes: true
+
+      - name: Run actionlint on workflow templates
+        if: inputs.workflow-template-dir != ''
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          fail-on-error: true
+          shellcheck: true
+          pyflakes: true
+          files: ${{ inputs.workflow-template-dir }}/*.yml
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          advanced-security: false
+
+      - name: Stage workflow templates for discovery
+        if: inputs.workflow-template-dir != ''
+        env:
+          TEMPLATE_DIR: ${{ inputs.workflow-template-dir }}
+        run: |
+          # zizmor-action mounts only the workspace into its container.
+          mkdir -p .zizmor-templates/.github/workflows
+          cp "$TEMPLATE_DIR"/*.yml .zizmor-templates/.github/workflows/
+
+      - name: Run zizmor on workflow templates
+        if: inputs.workflow-template-dir != ''
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          advanced-security: false
+          inputs: .zizmor-templates/.github/workflows

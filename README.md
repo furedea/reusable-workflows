@@ -2,6 +2,22 @@
 
 Reusable GitHub Actions workflows (`on: workflow_call`) shared by furedea repositories.
 
+## Workflows in this repository
+
+Shared workflows, called from the `ci.yml` of other repositories (each has a section below):
+
+- `claude-review.yml`
+- `codex-review.yml`
+- `gha-lint.yml`
+- `dependency-review.yml`
+- `nix-lint.yml`
+
+Workflows for this repository only, not meant to be called from elsewhere:
+
+- `ci.yml` calls the shared workflows above, so that a pull request here tests its own versions, and gates
+  merging on `all-green`.
+- `codeql.yml` runs CodeQL on public repositories.
+
 ## claude-review.yml
 
 Reviews every same-repository pull request with Claude Code. It posts P0 to P3 findings as inline comments
@@ -58,3 +74,53 @@ jobs:
 Add `codex-review` to `all-green`'s `needs`. The caller needs the repository secret `CODEX_REVIEW_TOKEN`: a
 fine-grained token of the owner with only Pull requests read and write. In the Codex settings, keep the
 repository's automatic review on "Follow personal preferences".
+
+## gha-lint.yml
+
+Lints the workflows with actionlint (with shellcheck and pyflakes) and zizmor. The optional input
+`workflow-template-dir` names a directory of workflow templates (`*.yml`) that are checked as well.
+
+```yaml
+jobs:
+    gha-lint:
+        uses: furedea/reusable-workflows/.github/workflows/gha-lint.yml@<full-commit-sha> # <ref>
+        permissions:
+            actions: read
+            contents: read
+        with:
+            workflow-template-dir: templates # optional
+```
+
+Add `gha-lint` to `all-green`'s `needs`.
+
+## dependency-review.yml
+
+Fails a pull request that adds a dependency with a vulnerability at or above `fail-on-severity` (default
+`high`). The review runs only for `pull_request` events of public repositories; in every other case the
+caller job still succeeds, so callers need no `if`.
+
+```yaml
+jobs:
+    dependency-review:
+        uses: furedea/reusable-workflows/.github/workflows/dependency-review.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+        with:
+            fail-on-severity: high # optional
+```
+
+Add `dependency-review` to `all-green`'s `needs`.
+
+## nix-lint.yml
+
+Checks Nix files with nixfmt (tracked `*.nix` files), statix, and deadnix (`--fail`).
+
+```yaml
+jobs:
+    nix-lint:
+        uses: furedea/reusable-workflows/.github/workflows/nix-lint.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+```
+
+Add `nix-lint` to `all-green`'s `needs`.

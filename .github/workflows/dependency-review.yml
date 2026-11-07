@@ -1,0 +1,50 @@
+name: Dependency review (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-severity:
+        description: Lowest vulnerability severity that fails the review (low, moderate, high, critical).
+        type: string
+        required: false
+        default: high
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  should-review:
+    name: Decide whether to review
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions: {}
+    # Dependency review needs the dependency graph, which private repositories may lack, and only
+    # compares pull request base and head. This job always succeeds so the caller job is never
+    # reported as skipped.
+    outputs:
+      run: ${{ github.event_name == 'pull_request' && !github.event.repository.private }}
+    steps:
+      - name: No-op
+        run: "true"
+
+  review:
+    name: Review dependencies
+    needs: should-review
+    if: needs.should-review.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Review dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: ${{ inputs.fail-on-severity }}

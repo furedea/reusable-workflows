@@ -17,33 +17,26 @@ defaults:
     shell: bash
 
 jobs:
-  nix-lint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  # actionlint does not support the $/ self-repository syntax yet (rhysd/actionlint#711). Once it does,
+  # switch these calls to $/ and drop the zizmor suppressions (furedea/reusable-workflows#10).
+  gha-lint:
+    uses: ./.github/workflows/gha-lint.yml # zizmor: ignore[self-repository]
+    permissions:
+      actions: read
+      contents: read
+
+  dependency-review:
+    uses: ./.github/workflows/dependency-review.yml # zizmor: ignore[self-repository]
     permissions:
       contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@ab739621df7a23f52766f9ccc97f38da6b7af14f # v31.10.5
-
-      - name: Run nixfmt
-        run: |
-          mapfile -t files < <(git ls-files "*.nix")
-          ((${#files[@]} == 0)) || nix run nixpkgs#nixfmt -- --check "${files[@]}"
-
-      - name: Run statix
-        run: nix run nixpkgs#statix -- check .
-
-      - name: Run deadnix
-        run: nix run nixpkgs#deadnix -- --fail .
+  nix-lint:
+    uses: ./.github/workflows/nix-lint.yml # zizmor: ignore[self-repository]
+    permissions:
+      contents: read
 
   claude-review:
-    uses: ./.github/workflows/claude-review.yml
+    uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]
     permissions:
       contents: read
       pull-requests: write
@@ -51,7 +44,7 @@ jobs:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
   codex-review:
-    uses: ./.github/workflows/codex-review.yml
+    uses: ./.github/workflows/codex-review.yml # zizmor: ignore[self-repository]
     permissions: {}
     secrets:
       codex_review_token: ${{ secrets.CODEX_REVIEW_TOKEN }}
@@ -59,6 +52,8 @@ jobs:
   all-green:
     if: always()
     needs:
+      - gha-lint
+      - dependency-review
       - nix-lint
       - claude-review
       - codex-review
