@@ -128,8 +128,10 @@ Add `nix-lint` to `all-green`'s `needs`.
 
 ## nix-check.yml
 
-Runs `nix flake check -L` on the repository's flake. It takes no inputs and uses no cache, because a cold run
-takes 40 to 70 seconds; add a cache only when a repository gets slow.
+Runs `nix flake check -L --all-systems` on the repository's flake. `--all-systems` evaluates the outputs of
+every declared system, so a flake that exposes only `aarch64-darwin` outputs is not skipped on the Linux
+runner. Outputs of other systems are evaluated but not built. It takes no inputs and uses no cache, because a
+cold run takes 40 to 70 seconds; add a cache only when a repository gets slow.
 
 ```yaml
 jobs:
