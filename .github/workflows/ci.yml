@@ -35,6 +35,11 @@ jobs:
     permissions:
       contents: read
 
+  nix-check:
+    uses: ./.github/workflows/nix-check.yml # zizmor: ignore[self-repository]
+    permissions:
+      contents: read
+
   claude-review:
     uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]
     permissions:
@@ -55,6 +60,7 @@ jobs:
       - gha-lint
       - dependency-review
       - nix-lint
+      - nix-check
       - claude-review
       - codex-review
     runs-on: ubuntu-latest

@@ -11,6 +11,7 @@ Shared workflows, called from the `ci.yml` of other repositories (each has a sec
 - `gha-lint.yml`
 - `dependency-review.yml`
 - `nix-lint.yml`
+- `nix-check.yml`
 
 Workflows for this repository only, not meant to be called from elsewhere:
 
@@ -124,3 +125,20 @@ jobs:
 ```
 
 Add `nix-lint` to `all-green`'s `needs`.
+
+## nix-check.yml
+
+Runs `nix flake check -L` to build the runner's own checks, then `nix flake check --all-systems --no-build` to
+evaluate every system's outputs without building other systems' checks on the Linux runner. It takes no
+inputs and uses no cache, because a cold run takes 40 to 70 seconds; add a cache only when a repository gets
+slow.
+
+```yaml
+jobs:
+    nix-check:
+        uses: furedea/reusable-workflows/.github/workflows/nix-check.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+```
+
+Add `nix-check` to `all-green`'s `needs`.
