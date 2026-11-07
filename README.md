@@ -35,7 +35,8 @@ commit that the comment names, so every time `main` moves, the `gha-lint` of eve
 tag does not move, so nothing happens in the callers until the next release.
 
 Releases are made by `release_please.yml`: on every push to `main` it opens or updates a release PR from the
-Conventional Commits, and merging that PR creates the tag and the GitHub release. The workflow signs in as a
+Conventional Commits, and merging that PR creates the tag and the GitHub release. The settings are in `release-please-config.json` and
+`.release-please-manifest.json`, the default names of release-please-action. The workflow signs in as a
 GitHub App, so that the release PR triggers CI; a PR opened with `GITHUB_TOKEN` does not. The App needs the
 Contents, Issues and Pull requests permissions (read and write) and must be installed on this repository, which
 needs the variable `RELEASE_APP_CLIENT_ID` (the App's Client ID) and the secret `RELEASE_APP_PRIVATE_KEY`. The workflow mints a token for
