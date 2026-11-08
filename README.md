@@ -102,8 +102,7 @@ repository's automatic review on "Follow personal preferences".
 
 ## gha-lint.yml
 
-Lints the workflows with actionlint (with shellcheck and pyflakes) and zizmor. The optional input
-`workflow-template-dir` names a directory of workflow templates (`*.yml`) that are checked as well.
+Lints the workflows with actionlint (with shellcheck and pyflakes) and zizmor. It takes no inputs.
 
 ```yaml
 jobs:
@@ -112,8 +111,6 @@ jobs:
         permissions:
             actions: read
             contents: read
-        with:
-            workflow-template-dir: templates # optional
 ```
 
 Add `gha-lint` to `all-green`'s `needs`.
@@ -153,8 +150,8 @@ Add `nix-lint` to `all-green`'s `needs`.
 ## nix-check.yml
 
 Runs `nix flake check -L` to build the runner's own checks, then `nix flake check --all-systems --no-build` to
-evaluate every system's outputs without building other systems' checks on the Linux runner. It uses no cache,
-because a cold run takes 40 to 70 seconds; add a cache only when a repository gets slow.
+evaluate every system's outputs without building other systems' checks on the Linux runner. It takes no inputs
+and uses no cache, because a cold run takes 40 to 70 seconds; add a cache only when a repository gets slow.
 
 ```yaml
 jobs:
@@ -162,14 +159,7 @@ jobs:
         uses: furedea/reusable-workflows/.github/workflows/nix-check.yml@<full-commit-sha> # <ref>
         permissions:
             contents: read
-        with:
-            all-systems: true # optional, default true
 ```
-
-The input `all-systems` (boolean, default `true`) controls the second step. Set it to `false` for a flake that
-uses import-from-derivation (for example `builtins.pathExists` on a derivation output): evaluating its
-foreign-system outputs requires building them, so `--no-build` fails on the Linux runner for its darwin outputs
-(seen in furedea/agent-harness#195 and furedea/dotfiles#405). With `false`, only `nix flake check -L` runs.
 
 Add `nix-check` to `all-green`'s `needs`.
 

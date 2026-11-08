@@ -2,16 +2,6 @@ name: Nix check (reusable)
 
 on:
   workflow_call:
-    inputs:
-      all-systems:
-        description: >-
-          Also run `nix flake check --all-systems --no-build` to evaluate every system's outputs. Set to false for
-          flakes that use import-from-derivation (for example `builtins.pathExists` on a derivation output): they
-          cannot evaluate foreign-system outputs without building them, so `--no-build` fails on the Linux runner
-          for their darwin outputs.
-        type: boolean
-        required: false
-        default: true
 
 permissions: {}
 
@@ -39,5 +29,4 @@ jobs:
         run: nix flake check -L
 
       - name: Evaluate every system
-        if: inputs.all-systems
         run: nix flake check --all-systems --no-build
