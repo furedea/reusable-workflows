@@ -63,7 +63,7 @@ jobs:
       - nix-check
       - claude-review
       - codex-review
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 1
     permissions: {}
     steps:

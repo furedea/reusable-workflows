@@ -22,7 +22,7 @@ concurrency:
 jobs:
   should-review:
     name: Decide whether to review
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 1
     permissions: {}
     # Same rule as claude-review: same-repository pull requests that a human or furedea-agent opened.
@@ -41,7 +41,7 @@ jobs:
     name: Codex review
     needs: should-review
     if: needs.should-review.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 25
     permissions: {}
     env:

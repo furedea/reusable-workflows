@@ -18,7 +18,7 @@ defaults:
 jobs:
   actionlint:
     name: actionlint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -34,6 +34,8 @@ jobs:
           fail-on-error: true
           shellcheck: true
           pyflakes: true
+          # renovate: depName=rhysd/actionlint
+          version: 1.7.12
 
       - name: Run actionlint on workflow templates
         if: inputs.workflow-template-dir != ''
@@ -42,11 +44,13 @@ jobs:
           fail-on-error: true
           shellcheck: true
           pyflakes: true
+          # renovate: depName=rhysd/actionlint
+          version: 1.7.12
           files: ${{ inputs.workflow-template-dir }}/*.yml
 
   zizmor:
     name: zizmor
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       actions: read
@@ -61,6 +65,8 @@ jobs:
         uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           advanced-security: false
+          # renovate: depName=zizmorcore/zizmor
+          version: 1.32.0
 
       - name: Stage workflow templates for discovery
         if: inputs.workflow-template-dir != ''
@@ -76,4 +82,6 @@ jobs:
         uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           advanced-security: false
+          # renovate: depName=zizmorcore/zizmor
+          version: 1.32.0
           inputs: .zizmor-templates/.github/workflows

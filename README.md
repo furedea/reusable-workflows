@@ -153,9 +153,8 @@ Add `nix-lint` to `all-green`'s `needs`.
 ## nix-check.yml
 
 Runs `nix flake check -L` to build the runner's own checks, then `nix flake check --all-systems --no-build` to
-evaluate every system's outputs without building other systems' checks on the Linux runner. It takes no
-inputs and uses no cache, because a cold run takes 40 to 70 seconds; add a cache only when a repository gets
-slow.
+evaluate every system's outputs without building other systems' checks on the Linux runner. It uses no cache,
+because a cold run takes 40 to 70 seconds; add a cache only when a repository gets slow.
 
 ```yaml
 jobs:
@@ -163,6 +162,24 @@ jobs:
         uses: furedea/reusable-workflows/.github/workflows/nix-check.yml@<full-commit-sha> # <ref>
         permissions:
             contents: read
+        with:
+            all-systems: true # optional, default true
 ```
 
+The input `all-systems` (boolean, default `true`) controls the second step. Set it to `false` for a flake that
+uses import-from-derivation (for example `builtins.pathExists` on a derivation output): evaluating its
+foreign-system outputs requires building them, so `--no-build` fails on the Linux runner for its darwin outputs
+(seen in furedea/agent-harness#195 and furedea/dotfiles#405). With `false`, only `nix flake check -L` runs.
+
 Add `nix-check` to `all-green`'s `needs`.
+
+## Pinned tool versions
+
+Every tool these workflows run is pinned to an exact version, so a run does not change when an upstream
+`latest` moves. Renovate updates each pin through the `customManagers` in `renovate.json`:
+
+- `gha-lint.yml`: actionlint (`version: 1.7.12`) and zizmor (`version: 1.32.0`), from their GitHub releases.
+- `nix-lint.yml`: one nixpkgs revision in the job env `NIXPKGS_REV`, which provides nixfmt, statix and deadnix.
+  Renovate moves it to the head of `nixos-unstable`.
+- `runs-on: ubuntu-26.04` in every workflow instead of `ubuntu-latest`. `.github/actionlint.yaml` allows the label
+  until actionlint knows it.
