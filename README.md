@@ -178,5 +178,6 @@ Renovate updates each pin through the `customManagers` in `renovate.json`:
 - Nix and the Claude CLI are pinned by the SHA of the action that installs them (`install-nix-action` v31.11.3
   installs Nix 2.35.4, `claude-code-action` v1.0.268 installs Claude CLI 2.1.318). They move up together with the
   action when Renovate updates it.
-- `runs-on: ubuntu-26.04` in every workflow instead of `ubuntu-latest`. `.github/actionlint.yaml` allows the label
-  until actionlint knows it.
+- `runs-on: ubuntu-24.04` in every workflow instead of `ubuntu-latest`. GitHub provides the two newest Ubuntu
+  LTS releases, and its `ubuntu-latest` migration notice advises pinning 24.04. `ubuntu-26.04` is not used because
+  the pinned actionlint 1.7.12 does not know the label (furedea/reusable-workflows#17).

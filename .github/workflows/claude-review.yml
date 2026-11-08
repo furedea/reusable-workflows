@@ -20,7 +20,7 @@ concurrency:
 jobs:
   should-review:
     name: Decide whether to review
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 1
     permissions: {}
     # Only same-repository pull requests (secrets are not passed to forks), and not
@@ -40,7 +40,7 @@ jobs:
     name: Claude review
     needs: should-review
     if: needs.should-review.outputs.run == 'true'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
