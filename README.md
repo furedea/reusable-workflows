@@ -18,6 +18,30 @@ Workflows for this repository only, not meant to be called from elsewhere:
 - `ci.yml` calls the shared workflows above, so that a pull request here tests its own versions, and gates
   merging on `all-green`.
 - `codeql.yml` runs CodeQL on public repositories.
+- `release_please.yml` creates release PRs and `vX.Y.Z` tags.
+
+## Calling a shared workflow
+
+Call a shared workflow from another repository with a full commit SHA and the release tag as the comment:
+
+```yaml
+uses: furedea/reusable-workflows/.github/workflows/<name>.yml@<full-commit-sha> # vX.Y.Z
+```
+
+release-please tags every release of this repository as `vX.Y.Z`, and Renovate opens a pull request in each
+caller that moves the pinned SHA and the comment to the new release.
+
+Do not write `# main` in the comment. zizmor's `ref-version-mismatch` audit fails when the SHA is no longer the
+commit that the comment names, so every time `main` moves, the `gha-lint` of every caller would break. A release
+tag does not move, so nothing happens in the callers until the next release.
+
+Releases are made by `release_please.yml`: on every push to `main` it opens or updates a release PR from the
+Conventional Commits, and merging that PR creates the tag and the GitHub release. The settings are in `release-please-config.json` and
+`.release-please-manifest.json`, the default names of release-please-action. The workflow signs in as a
+GitHub App, so that the release PR triggers CI; a PR opened with `GITHUB_TOKEN` does not. The App needs the
+Contents, Issues and Pull requests permissions (read and write) and must be installed on this repository, which
+needs the variable `RELEASE_APP_CLIENT_ID` (the App's Client ID) and the secret `RELEASE_APP_PRIVATE_KEY`. The workflow mints a token for
+this repository only with `actions/create-github-app-token`.
 
 ## claude-review.yml
 
