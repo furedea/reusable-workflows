@@ -181,5 +181,8 @@ Every tool these workflows run is pinned to an exact version, so a run does not 
 - `gha-lint.yml`: actionlint (`version: 1.7.12`) and zizmor (`version: 1.32.0`), from their GitHub releases.
 - `nix-lint.yml`: one nixpkgs revision in the job env `NIXPKGS_REV`, which provides nixfmt, statix and deadnix.
   Renovate moves it to the head of `nixos-unstable`.
+- Nix and the Claude CLI are pinned by the SHA of the action that installs them (`install-nix-action` v31.11.3
+  installs Nix 2.35.4, `claude-code-action` v1.0.268 installs Claude CLI 2.1.318). They move up together with the
+  action when Renovate updates it.
 - `runs-on: ubuntu-26.04` in every workflow instead of `ubuntu-latest`. `.github/actionlint.yaml` allows the label
   until actionlint knows it.
