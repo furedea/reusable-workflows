@@ -17,7 +17,6 @@ Workflows for this repository only, not meant to be called from elsewhere:
 
 - `ci.yml` calls the shared workflows above, so that a pull request here tests its own versions, and gates
   merging on `all-green`.
-- `codeql.yml` runs CodeQL on public repositories.
 - `release_please.yml` creates release PRs and `vX.Y.Z` tags.
 
 ## Calling a shared workflow
