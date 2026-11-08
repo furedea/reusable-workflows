@@ -165,12 +165,16 @@ Add `nix-check` to `all-green`'s `needs`.
 
 ## Pinned tool versions
 
-Every tool these workflows run is pinned to an exact version, so a run does not change when an upstream
-`latest` moves. Renovate updates each pin through the `customManagers` in `renovate.json`:
+Every tool these workflows run is pinned so that its content cannot change, not only its version string.
+Renovate updates each pin through the `customManagers` in `renovate.json`:
 
-- `gha-lint.yml`: actionlint (`version: 1.7.12`) and zizmor (`version: 1.32.0`), from their GitHub releases.
-- `nix-lint.yml`: one nixpkgs revision in the job env `NIXPKGS_REV`, which provides nixfmt, statix and deadnix.
-  Renovate moves it to the head of `nixos-unstable`.
+- `nix-lint.yml` and `gha-lint.yml`: one nixpkgs revision in the job env `NIXPKGS_REV` (the same value in both
+  files). It provides nixfmt, statix, deadnix and actionlint, and a nixpkgs revision fixes every input by hash.
+  The nixpkgs actionlint bundles shellcheck and pyflakes. It is run with `nix run` from this revision instead of
+  a release asset download, because a release asset is not checksum-verified and can be replaced. Renovate moves
+  the revision in both files to the head of `nixos-unstable` in one pull request.
+- `gha-lint.yml`: zizmor `version: 1.32.0`. The pinned SHA of `zizmor-action` carries a lockfile with hashes, so
+  this version fixes the content of zizmor as well.
 - Nix and the Claude CLI are pinned by the SHA of the action that installs them (`install-nix-action` v31.11.3
   installs Nix 2.35.4, `claude-code-action` v1.0.268 installs Claude CLI 2.1.318). They move up together with the
   action when Renovate updates it.
