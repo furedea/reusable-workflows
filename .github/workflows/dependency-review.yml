@@ -18,7 +18,7 @@ defaults:
 jobs:
   should-review:
     name: Decide whether to review
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 1
     permissions: {}
     # Dependency review needs the dependency graph, which private repositories may lack, and only
@@ -34,7 +34,7 @@ jobs:
     name: Review dependencies
     needs: should-review
     if: needs.should-review.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read

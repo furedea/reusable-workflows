@@ -12,10 +12,13 @@ defaults:
 jobs:
   nix-lint:
     name: nix-lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      # nixos-unstable revision that provides nixfmt, statix and deadnix; Renovate updates it.
+      NIXPKGS_REV: f9a75f41be3a74eab55d3a7679d34ad6cc0da977
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,10 +31,10 @@ jobs:
       - name: Run nixfmt
         run: |
           mapfile -t files < <(git ls-files "*.nix")
-          ((${#files[@]} == 0)) || nix run nixpkgs#nixfmt -- --check "${files[@]}"
+          ((${#files[@]} == 0)) || nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#nixfmt" -- --check "${files[@]}"
 
       - name: Run statix
-        run: nix run nixpkgs#statix -- check .
+        run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#statix" -- check .
 
       - name: Run deadnix
-        run: nix run nixpkgs#deadnix -- --fail .
+        run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#deadnix" -- --fail .

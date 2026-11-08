@@ -102,8 +102,7 @@ repository's automatic review on "Follow personal preferences".
 
 ## gha-lint.yml
 
-Lints the workflows with actionlint (with shellcheck and pyflakes) and zizmor. The optional input
-`workflow-template-dir` names a directory of workflow templates (`*.yml`) that are checked as well.
+Lints the workflows with actionlint (with shellcheck and pyflakes) and zizmor. It takes no inputs.
 
 ```yaml
 jobs:
@@ -112,8 +111,6 @@ jobs:
         permissions:
             actions: read
             contents: read
-        with:
-            workflow-template-dir: templates # optional
 ```
 
 Add `gha-lint` to `all-green`'s `needs`.
@@ -153,9 +150,8 @@ Add `nix-lint` to `all-green`'s `needs`.
 ## nix-check.yml
 
 Runs `nix flake check -L` to build the runner's own checks, then `nix flake check --all-systems --no-build` to
-evaluate every system's outputs without building other systems' checks on the Linux runner. It takes no
-inputs and uses no cache, because a cold run takes 40 to 70 seconds; add a cache only when a repository gets
-slow.
+evaluate every system's outputs without building other systems' checks on the Linux runner. It takes no inputs
+and uses no cache, because a cold run takes 40 to 70 seconds; add a cache only when a repository gets slow.
 
 ```yaml
 jobs:
@@ -166,3 +162,22 @@ jobs:
 ```
 
 Add `nix-check` to `all-green`'s `needs`.
+
+## Pinned tool versions
+
+Every tool these workflows run is pinned so that its content cannot change, not only its version string.
+Renovate updates each pin through the `customManagers` in `renovate.json`:
+
+- `nix-lint.yml` and `gha-lint.yml`: one nixpkgs revision in the job env `NIXPKGS_REV` (the same value in both
+  files). It provides nixfmt, statix, deadnix and actionlint, and a nixpkgs revision fixes every input by hash.
+  The nixpkgs actionlint bundles shellcheck and pyflakes. It is run with `nix run` from this revision instead of
+  a release asset download, because a release asset is not checksum-verified and can be replaced. Renovate moves
+  the revision in both files to the head of `nixos-unstable` in one pull request.
+- `gha-lint.yml`: zizmor `version: 1.32.0`. The pinned SHA of `zizmor-action` carries a lockfile with hashes, so
+  this version fixes the content of zizmor as well.
+- Nix and the Claude CLI are pinned by the SHA of the action that installs them (`install-nix-action` v31.11.3
+  installs Nix 2.35.4, `claude-code-action` v1.0.268 installs Claude CLI 2.1.318). They move up together with the
+  action when Renovate updates it.
+- `runs-on: ubuntu-24.04` in every workflow instead of `ubuntu-latest`. GitHub provides the two newest Ubuntu
+  LTS releases, and its `ubuntu-latest` migration notice advises pinning 24.04. `ubuntu-26.04` is not used because
+  the pinned actionlint 1.7.12 does not know the label (furedea/reusable-workflows#17).
