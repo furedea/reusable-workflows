@@ -286,7 +286,8 @@ must be installed on the repository with Contents, Issues and Pull requests perm
 `nix-lint.yml`) and restores the Nix store cache (`cache-nix-action`). Use it in a job that runs the repository's
 tools from its flake dev shell, so that CI and a local shell use the versions in `flake.lock`.
 
-The cache key is `<key-prefix>-<runner.os>-<runner.arch>-<hash of flake.nix and flake.lock>`. On a miss, the
+The cache key is `<key-prefix>-<runner.os>-<runner.arch>-<hash of every .nix file and flake.lock>`, so a change to a
+file that `flake.nix` imports also changes the key (the action saves only when the exact key is absent). On a miss, the
 newest cache with the same prefix, OS and architecture is restored and only the difference is built. The store is
 garbage-collected to 5 GiB before it is saved, so that it stays below GitHub's 10 GiB cache quota per repository.
 
