@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/furedea/reusable-workflows/compare/v1.1.0...v1.2.0) (2026-11-09)
+
+
+### Features
+
+* **release:** add shared release-pr and release-publish workflows ([#20](https://github.com/furedea/reusable-workflows/issues/20)) ([5f7ab9f](https://github.com/furedea/reusable-workflows/commit/5f7ab9fd5fd9d8789146de4a39338980ff94d39b))
+
 ## [1.1.0](https://github.com/furedea/reusable-workflows/compare/v1.0.0...v1.1.0) (2026-11-08)
 
 
