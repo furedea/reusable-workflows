@@ -40,6 +40,24 @@ jobs:
     permissions:
       contents: read
 
+  # Runs the composite action at this commit, as the calls above do for the workflows.
+  nix-setup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Nix
+        uses: ./.github/actions/nix-setup # zizmor: ignore[self-repository]
+
+      - name: Check that Nix works
+        run: nix --version
+
   claude-review:
     uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]
     permissions:
@@ -61,6 +79,7 @@ jobs:
       - dependency-review
       - nix-lint
       - nix-check
+      - nix-setup
       - claude-review
       - codex-review
     runs-on: ubuntu-24.04
