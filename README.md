@@ -15,6 +15,8 @@ Shared workflows, called from the `ci.yml` of other repositories (each has a sec
 - `release-pr.yml`
 - `release-publish.yml`
 
+A composite action, called as a step: `.github/actions/nix-setup` (see "nix-setup (composite action)" below).
+
 Workflows for this repository only, not meant to be called from elsewhere:
 
 - `ci.yml` calls the shared workflows above, so that a pull request here tests its own versions, and gates
@@ -277,6 +279,52 @@ the release would stay a draft.
 The release GitHub App, not `GITHUB_TOKEN` or a personal access token, opens the release PR, so that it triggers
 CI. The caller needs the variable `RELEASE_APP_CLIENT_ID` and the secret `RELEASE_APP_PRIVATE_KEY`, and the App
 must be installed on the repository with Contents, Issues and Pull requests permissions (read and write).
+
+## nix-setup (composite action)
+
+`.github/actions/nix-setup` installs Nix (`install-nix-action`, the same pinned SHA as `nix-check.yml` and
+`nix-lint.yml`) and restores the Nix store cache (`cache-nix-action`). Use it in a job that runs the repository's
+tools from its flake dev shell, so that CI and a local shell use the versions in `flake.lock`.
+
+The cache key is `<key-prefix>-<runner.os>-<runner.arch>-<hash of flake.nix and flake.lock>`. On a miss, the
+newest cache with the same prefix, OS and architecture is restored and only the difference is built. The store is
+garbage-collected to 5 GiB before it is saved, so that it stays below GitHub's 10 GiB cache quota per repository.
+
+| Input        | Default                       | Meaning                                                                                                 |
+| ------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `key-prefix` | `nix`                         | Prefix of the cache key; use a different one for jobs whose store content differs                       |
+| `save`       | `github.event_name == 'push'` | Save the cache at the end of the job; pull requests only restore (a pull request cache is not reusable) |
+
+Jobs of one workflow that share a key race to save it, and only one wins. Pass `save: false` to every job but one
+if the saving job should be a fixed one.
+
+```yaml
+defaults:
+    run:
+        shell: nix develop --command bash -eo pipefail {0}
+
+jobs:
+    test:
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@<full-commit-sha> # <ref>
+              with:
+                  persist-credentials: false
+
+            # `defaults.run.shell` applies to `run` steps only, so this step needs no Nix yet.
+            - uses: furedea/reusable-workflows/.github/actions/nix-setup@<full-commit-sha> # <ref>
+
+            - run: pytest
+```
+
+Pin the action to a full commit SHA like the workflows. The dev shell must exist for the runner's system
+(`x86_64-linux`).
+
+`nix-check.yml` and `nix-lint.yml` do not use it: a reusable workflow resolves `./.github/actions/...` in the
+caller's repository, and a pinned `furedea/reusable-workflows/...@<sha>` cannot name its own release.
 
 ## Pinned tool versions
 
