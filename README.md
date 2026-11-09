@@ -12,12 +12,16 @@ Shared workflows, called from the `ci.yml` of other repositories (each has a sec
 - `dependency-review.yml`
 - `nix-lint.yml`
 - `nix-check.yml`
+- `release-pr.yml`
+- `release-publish.yml`
 
 Workflows for this repository only, not meant to be called from elsewhere:
 
 - `ci.yml` calls the shared workflows above, so that a pull request here tests its own versions, and gates
   merging on `all-green`.
-- `release_please.yml` creates release PRs and `vX.Y.Z` tags.
+- `release-please.yml` creates release PRs and `vX.Y.Z` tags by calling `release-pr.yml`.
+
+Workflow file names use kebab-case, as GitHub Actions and release-please-action do (`ls-lint` enforces it).
 
 ## Calling a shared workflow
 
@@ -34,7 +38,7 @@ Do not write `# main` in the comment. zizmor's `ref-version-mismatch` audit fail
 commit that the comment names, so every time `main` moves, the `gha-lint` of every caller would break. A release
 tag does not move, so nothing happens in the callers until the next release.
 
-Releases are made by `release_please.yml`: on every push to `main` it opens or updates a release PR from the
+Releases are made by `release-please.yml`: on every push to `main` it opens or updates a release PR from the
 Conventional Commits, and merging that PR creates the tag and the GitHub release. The settings are in `release-please-config.json` and
 `.release-please-manifest.json`, the default names of release-please-action. The workflow signs in as a
 GitHub App, so that the release PR triggers CI; a PR opened with `GITHUB_TOKEN` does not. The App needs the
@@ -161,6 +165,118 @@ jobs:
 ```
 
 Add `nix-check` to `all-green`'s `needs`.
+
+## release-pr.yml and release-publish.yml
+
+Together they release a repository with release-please, draft releases and immutable releases. A caller's
+`release.yml` runs on every push to `main`, in three jobs. The workflows only draft, attest and publish; the
+releases become immutable only when the caller enables the repository setting "Enable release immutability"
+(Settings > General > Releases). Enable it before the first release.
+
+1. `release-pr` (`release-pr.yml`) opens or updates the release PR. When the PR is merged it creates the tag and a
+   **draft** release, and outputs `release_created` and `tag_name`.
+2. `build` (the caller's own job) builds the artifacts on the tag and uploads them as one workflow artifact.
+3. `release-publish` (`release-publish.yml`) checks that the tag points to the commit of the run and that the
+   release is still a draft, attests every file of the artifact, uploads the files to the draft and publishes it.
+
+The build stays in the caller because each repository builds differently; only the release steps are shared.
+The files in the artifact are exactly the release assets: put checksums and every other asset there too. The
+artifact must be flat, with regular files only, no subdirectories and no hidden files (upload-artifact drops hidden
+files unless `include-hidden-files` is set, and `release-publish.yml` would skip them), because each entry is attested and passed to
+`gh release upload` as an asset (upload-artifact keeps the directories below a wildcard, so `dist/*` must match
+files, not directories). The
+attestation is signed by `release-publish.yml` at the pinned SHA, which is the builder identity to verify.
+
+```yaml
+name: Release
+
+on:
+    push:
+        branches:
+            - main
+    workflow_dispatch: # recovery of a stuck draft, run on the tag itself
+        inputs:
+            tag_name:
+                description: Draft release tag to build and publish; run this workflow on the same tag
+                required: true
+                type: string
+
+permissions: {}
+
+concurrency:
+    group: release-${{ github.repository }}
+    cancel-in-progress: false
+
+jobs:
+    release-pr:
+        if: github.event_name == 'push'
+        uses: furedea/reusable-workflows/.github/workflows/release-pr.yml@<full-commit-sha> # <ref>
+        permissions: {}
+        with:
+            app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+        secrets:
+            app_private_key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+    build:
+        needs: release-pr
+        if: ${{ !cancelled() && (needs.release-pr.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@<full-commit-sha> # <ref>
+              with:
+                  persist-credentials: false
+                  ref: ${{ needs.release-pr.outputs.tag_name || inputs.tag_name }}
+            # ... build and test, writing the release assets to dist/ ...
+            - uses: actions/upload-artifact@<full-commit-sha> # <ref>
+              with:
+                  name: release-artifacts
+                  path: dist/*
+                  if-no-files-found: error
+
+    release-publish:
+        needs: [release-pr, build]
+        if: ${{ !cancelled() && needs.build.result == 'success' }}
+        uses: furedea/reusable-workflows/.github/workflows/release-publish.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: write
+            id-token: write
+            attestations: write
+        with:
+            tag-name: ${{ needs.release-pr.outputs.tag_name || inputs.tag_name }}
+```
+
+`release-publish.yml` stops when the tag does not point to the commit of the run. This happens when the
+release PR's merge commit is not the commit of the run that creates the tag: concurrency keeps only one pending run
+per group, so a later push can cancel the run of the merge commit, and the next run then tags the merge commit
+while `GITHUB_SHA` is the later one. Re-running the job does not help. Recover the draft by dispatching the
+workflow on the tag itself, which makes `GITHUB_SHA` the tagged commit (`workflow_dispatch` in the example):
+
+```bash
+gh workflow run release.yml --ref vX.Y.Z -f tag_name=vX.Y.Z
+```
+
+The attestation step needs a public repository, or GitHub Enterprise Cloud for a private or internal one
+([attest-build-provenance](https://github.com/actions/attest-build-provenance#usage)). On GitHub Free, Pro or Team,
+a private repository cannot use `release-publish.yml`.
+
+The caller's release-please config must set `"draft": true` and `"force-tag-creation": true` on the package.
+Without `draft`, release-please publishes the release at once and `release-publish.yml` stops at its draft check.
+Without `force-tag-creation`, GitHub creates no git tag for a draft, so the `build` checkout of the tag and the
+tag check of `release-publish.yml` both fail.
+
+Only a single package at the root path (`"."`) is supported. For any other path, or for several packages,
+release-please emits path-prefixed outputs (`<path>--release_created`), which `release-pr.yml` does not expose, so
+the release would stay a draft.
+
+`release-pr.yml` takes `config-file` and `manifest-file` (defaults `release-please-config.json` and
+`.release-please-manifest.json`); `release-publish.yml` takes `artifact-name` (default `release-artifacts`).
+
+The release GitHub App, not `GITHUB_TOKEN` or a personal access token, opens the release PR, so that it triggers
+CI. The caller needs the variable `RELEASE_APP_CLIENT_ID` and the secret `RELEASE_APP_PRIVATE_KEY`, and the App
+must be installed on the repository with Contents, Issues and Pull requests permissions (read and write).
 
 ## Pinned tool versions
 

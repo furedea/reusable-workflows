@@ -1,0 +1,22 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  # Calls the shared workflow of this repository, so that its own releases exercise it.
+  release-pr:
+    uses: ./.github/workflows/release-pr.yml # zizmor: ignore[self-repository]
+    permissions: {}
+    with:
+      app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      app_private_key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
