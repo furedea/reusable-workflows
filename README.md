@@ -188,6 +188,12 @@ on:
     push:
         branches:
             - main
+    workflow_dispatch: # recovery of a stuck draft, run on the tag itself
+        inputs:
+            tag_name:
+                description: Draft release tag to build and publish; run this workflow on the same tag
+                required: true
+                type: string
 
 permissions: {}
 
@@ -197,6 +203,7 @@ concurrency:
 
 jobs:
     release-pr:
+        if: github.event_name == 'push'
         uses: furedea/reusable-workflows/.github/workflows/release-pr.yml@<full-commit-sha> # <ref>
         permissions: {}
         with:
@@ -206,7 +213,7 @@ jobs:
 
     build:
         needs: release-pr
-        if: needs.release-pr.outputs.release_created == 'true'
+        if: ${{ !cancelled() && (needs.release-pr.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
         runs-on: ubuntu-24.04
         timeout-minutes: 20
         permissions:
@@ -215,7 +222,7 @@ jobs:
             - uses: actions/checkout@<full-commit-sha> # <ref>
               with:
                   persist-credentials: false
-                  ref: ${{ needs.release-pr.outputs.tag_name }}
+                  ref: ${{ needs.release-pr.outputs.tag_name || inputs.tag_name }}
             # ... build and test, writing the release assets to dist/ ...
             - uses: actions/upload-artifact@<full-commit-sha> # <ref>
               with:
@@ -225,14 +232,29 @@ jobs:
 
     release-publish:
         needs: [release-pr, build]
+        if: ${{ !cancelled() && needs.build.result == 'success' }}
         uses: furedea/reusable-workflows/.github/workflows/release-publish.yml@<full-commit-sha> # <ref>
         permissions:
             contents: write
             id-token: write
             attestations: write
         with:
-            tag-name: ${{ needs.release-pr.outputs.tag_name }}
+            tag-name: ${{ needs.release-pr.outputs.tag_name || inputs.tag_name }}
 ```
+
+`release-publish.yml` stops when the tag does not point to the commit of the run. This happens when the
+release PR's merge commit is not the commit of the run that creates the tag: concurrency keeps only one pending run
+per group, so a later push can cancel the run of the merge commit, and the next run then tags the merge commit
+while `GITHUB_SHA` is the later one. Re-running the job does not help. Recover the draft by dispatching the
+workflow on the tag itself, which makes `GITHUB_SHA` the tagged commit (`workflow_dispatch` in the example):
+
+```bash
+gh workflow run release.yml --ref vX.Y.Z -f tag_name=vX.Y.Z
+```
+
+The attestation step needs a public repository, or GitHub Enterprise Cloud for a private or internal one
+([attest-build-provenance](https://github.com/actions/attest-build-provenance#usage)). On GitHub Free, Pro or Team,
+a private repository cannot use `release-publish.yml`.
 
 The caller's release-please config must set `"draft": true` and `"force-tag-creation": true` on the package.
 Without `draft`, release-please publishes the release at once and `release-publish.yml` stops at its draft check.
