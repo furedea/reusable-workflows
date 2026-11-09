@@ -5,7 +5,7 @@ ls:
   .*: regex:[a-z0-9]*([._][a-z0-9]+)*
   .github:
     workflows:
-      .yml: regex:[a-z0-9]*([._][a-z0-9]+)* | regex:(claude|codex)-review | regex:(gha|nix)-lint | regex:dependency-review | regex:nix-check
+      .yml: regex:[a-z0-9]*([._][a-z0-9]+)* | regex:(claude|codex)-review | regex:(gha|nix)-lint | regex:dependency-review | regex:nix-check | regex:release-(pr|publish)
 
 ignore:
   - .git
