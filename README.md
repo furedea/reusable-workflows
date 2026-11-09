@@ -181,6 +181,9 @@ releases become immutable only when the caller enables the repository setting "E
 
 The build stays in the caller because each repository builds differently; only the release steps are shared.
 The files in the artifact are exactly the release assets: put checksums and every other asset there too. The
+artifact must be flat, with regular files only and no subdirectories, because each entry is attested and passed to
+`gh release upload` as an asset (upload-artifact keeps the directories below a wildcard, so `dist/*` must match
+files, not directories). The
 attestation is signed by `release-publish.yml` at the pinned SHA, which is the builder identity to verify.
 
 ```yaml
