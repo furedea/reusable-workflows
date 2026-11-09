@@ -232,6 +232,11 @@ jobs:
             tag-name: ${{ needs.release-pr.outputs.tag_name }}
 ```
 
+The caller's release-please config must set `"draft": true` and `"force-tag-creation": true` on the package.
+Without `draft`, release-please publishes the release at once and `release-publish.yml` stops at its draft check.
+Without `force-tag-creation`, GitHub creates no git tag for a draft, so the `build` checkout of the tag and the
+tag check of `release-publish.yml` both fail.
+
 `release-pr.yml` takes `config-file` and `manifest-file` (defaults `release-please-config.json` and
 `.release-please-manifest.json`); `release-publish.yml` takes `artifact-name` (default `release-artifacts`).
 
