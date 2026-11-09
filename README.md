@@ -237,6 +237,10 @@ Without `draft`, release-please publishes the release at once and `release-publi
 Without `force-tag-creation`, GitHub creates no git tag for a draft, so the `build` checkout of the tag and the
 tag check of `release-publish.yml` both fail.
 
+Only a single package at the root path (`"."`) is supported. For any other path, or for several packages,
+release-please emits path-prefixed outputs (`<path>--release_created`), which `release-pr.yml` does not expose, so
+the release would stay a draft.
+
 `release-pr.yml` takes `config-file` and `manifest-file` (defaults `release-please-config.json` and
 `.release-please-manifest.json`); `release-publish.yml` takes `artifact-name` (default `release-artifacts`).
 
