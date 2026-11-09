@@ -19,8 +19,8 @@ A composite action, called as a step: `.github/actions/nix-setup` (see "nix-setu
 
 Workflows for this repository only, not meant to be called from elsewhere:
 
-- `ci.yml` calls the shared workflows above, so that a pull request here tests its own versions, and gates
-  merging on `all-green`.
+- `ci.yml` calls the shared workflows above and runs `nix-setup`, so that a pull request here tests its own
+  versions, and gates merging on `all-green`.
 - `release-please.yml` creates release PRs and `vX.Y.Z` tags by calling `release-pr.yml`.
 
 Workflow file names use kebab-case, as GitHub Actions and release-please-action do (`ls-lint` enforces it).
