@@ -19,7 +19,9 @@ Workflows for this repository only, not meant to be called from elsewhere:
 
 - `ci.yml` calls the shared workflows above, so that a pull request here tests its own versions, and gates
   merging on `all-green`.
-- `release_please.yml` creates release PRs and `vX.Y.Z` tags by calling `release-pr.yml`.
+- `release-please.yml` creates release PRs and `vX.Y.Z` tags by calling `release-pr.yml`.
+
+Workflow file names use kebab-case, as GitHub Actions and release-please-action do (`ls-lint` enforces it).
 
 ## Calling a shared workflow
 
@@ -36,7 +38,7 @@ Do not write `# main` in the comment. zizmor's `ref-version-mismatch` audit fail
 commit that the comment names, so every time `main` moves, the `gha-lint` of every caller would break. A release
 tag does not move, so nothing happens in the callers until the next release.
 
-Releases are made by `release_please.yml`: on every push to `main` it opens or updates a release PR from the
+Releases are made by `release-please.yml`: on every push to `main` it opens or updates a release PR from the
 Conventional Commits, and merging that PR creates the tag and the GitHub release. The settings are in `release-please-config.json` and
 `.release-please-manifest.json`, the default names of release-please-action. The workflow signs in as a
 GitHub App, so that the release PR triggers CI; a PR opened with `GITHUB_TOKEN` does not. The App needs the
