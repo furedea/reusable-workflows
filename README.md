@@ -12,12 +12,14 @@ Shared workflows, called from the `ci.yml` of other repositories (each has a sec
 - `dependency-review.yml`
 - `nix-lint.yml`
 - `nix-check.yml`
+- `release-pr.yml`
+- `release-publish.yml`
 
 Workflows for this repository only, not meant to be called from elsewhere:
 
 - `ci.yml` calls the shared workflows above, so that a pull request here tests its own versions, and gates
   merging on `all-green`.
-- `release_please.yml` creates release PRs and `vX.Y.Z` tags.
+- `release_please.yml` creates release PRs and `vX.Y.Z` tags by calling `release-pr.yml`.
 
 ## Calling a shared workflow
 
@@ -161,6 +163,81 @@ jobs:
 ```
 
 Add `nix-check` to `all-green`'s `needs`.
+
+## release-pr.yml and release-publish.yml
+
+Together they release a repository with release-please, draft releases and immutable releases. A caller's
+`release.yml` runs on every push to `main`, in three jobs:
+
+1. `release-pr` (`release-pr.yml`) opens or updates the release PR. When the PR is merged it creates the tag and a
+   **draft** release, and outputs `release_created` and `tag_name`.
+2. `build` (the caller's own job) builds the artifacts on the tag and uploads them as one workflow artifact.
+3. `release-publish` (`release-publish.yml`) checks that the tag points to the commit of the run and that the
+   release is still a draft, attests every file of the artifact, uploads the files to the draft and publishes it.
+
+The build stays in the caller because each repository builds differently; only the release steps are shared.
+The files in the artifact are exactly the release assets: put checksums and every other asset there too. The
+attestation is signed by `release-publish.yml` at the pinned SHA, which is the builder identity to verify.
+
+```yaml
+name: Release
+
+on:
+    push:
+        branches:
+            - main
+
+permissions: {}
+
+concurrency:
+    group: release-${{ github.repository }}
+    cancel-in-progress: false
+
+jobs:
+    release-pr:
+        uses: furedea/reusable-workflows/.github/workflows/release-pr.yml@<full-commit-sha> # <ref>
+        permissions: {}
+        with:
+            app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+        secrets:
+            app_private_key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+    build:
+        needs: release-pr
+        if: needs.release-pr.outputs.release_created == 'true'
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@<full-commit-sha> # <ref>
+              with:
+                  persist-credentials: false
+                  ref: ${{ needs.release-pr.outputs.tag_name }}
+            # ... build and test, writing the release assets to dist/ ...
+            - uses: actions/upload-artifact@<full-commit-sha> # <ref>
+              with:
+                  name: release-artifacts
+                  path: dist/*
+                  if-no-files-found: error
+
+    release-publish:
+        needs: [release-pr, build]
+        uses: furedea/reusable-workflows/.github/workflows/release-publish.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: write
+            id-token: write
+            attestations: write
+        with:
+            tag-name: ${{ needs.release-pr.outputs.tag_name }}
+```
+
+`release-pr.yml` takes `config-file` and `manifest-file` (defaults `release-please-config.json` and
+`.release-please-manifest.json`); `release-publish.yml` takes `artifact-name` (default `release-artifacts`).
+
+The release GitHub App, not `GITHUB_TOKEN` or a personal access token, opens the release PR, so that it triggers
+CI. The caller needs the variable `RELEASE_APP_CLIENT_ID` and the secret `RELEASE_APP_PRIVATE_KEY`, and the App
+must be installed on the repository with Contents, Issues and Pull requests permissions (read and write).
 
 ## Pinned tool versions
 
