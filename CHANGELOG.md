@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/furedea/reusable-workflows/compare/v1.2.0...v1.3.0) (2026-11-09)
+
+
+### Features
+
+* **nix-setup:** add a composite action that installs Nix and caches the store ([#24](https://github.com/furedea/reusable-workflows/issues/24)) ([f446f69](https://github.com/furedea/reusable-workflows/commit/f446f69befc8beb9b4883baf1431a0ca7152b27a))
+
 ## [1.2.0](https://github.com/furedea/reusable-workflows/compare/v1.1.0...v1.2.0) (2026-11-09)
 
 
