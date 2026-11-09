@@ -167,7 +167,9 @@ Add `nix-check` to `all-green`'s `needs`.
 ## release-pr.yml and release-publish.yml
 
 Together they release a repository with release-please, draft releases and immutable releases. A caller's
-`release.yml` runs on every push to `main`, in three jobs:
+`release.yml` runs on every push to `main`, in three jobs. The workflows only draft, attest and publish; the
+releases become immutable only when the caller enables the repository setting "Enable release immutability"
+(Settings > General > Releases). Enable it before the first release.
 
 1. `release-pr` (`release-pr.yml`) opens or updates the release PR. When the PR is merged it creates the tag and a
    **draft** release, and outputs `release_created` and `tag_name`.
