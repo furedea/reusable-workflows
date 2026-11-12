@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/furedea/reusable-workflows/compare/v1.3.0...v1.4.0) (2026-11-12)
+
+
+### Features
+
+* **claude-review:** run the review on Sonnet at high effort instead of Opus at medium effort ([#27](https://github.com/furedea/reusable-workflows/issues/27)) ([f34643e](https://github.com/furedea/reusable-workflows/commit/f34643e623f278e755ec41841320184a108da7a0))
+
 ## [1.3.0](https://github.com/furedea/reusable-workflows/compare/v1.2.0...v1.3.0) (2026-11-09)
 
 
