@@ -58,6 +58,78 @@ jobs:
       - name: Check that Nix works
         run: nix --version
 
+  ast-grep:
+    uses: ./.github/workflows/ast-grep.yml # zizmor: ignore[self-repository]
+    permissions:
+      contents: read
+
+  # Runs the scan step of ast-grep.yml against a small repository with a base commit and a head commit, as a pull
+  # request's merge commit would give, and checks which findings fail the job and which only annotate.
+  ast-grep-fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the pinned rules commit
+        id: rules
+        run: echo "ref=$(yq '.on.workflow_call.inputs.agent-config-ref.default' .github/workflows/ast-grep.yml)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the ast-grep rules
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: furedea/agent-config
+          ref: ${{ steps.rules.outputs.ref }}
+          path: agent-config-rules
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - name: Check the findings of a fixture pull request
+        run: |
+          workflow=.github/workflows/ast-grep.yml
+          NIXPKGS_REV="$(yq '.jobs.ast-grep.env.NIXPKGS_REV' "$workflow")"
+          RULES_DIR="$PWD/agent-config-rules"
+          export NIXPKGS_REV RULES_DIR
+          yq '.jobs.ast-grep.steps[] | select(.name == "Scan changed lines") | .run' "$workflow" > "$RUNNER_TEMP/scan.sh"
+
+          cd "$(mktemp -d)"
+          git init -q .
+          git config user.email fixture@example.com
+          git config user.name fixture
+          printf 'old() {\n  echo\n}\nBadName() {\n  echo\n}\n' > old.sh
+          git add old.sh
+          git commit -qm base
+
+          # An existing violation in a touched file, a new violation, and a new warning.
+          printf '# touched\n' >> old.sh
+          printf 'BadNew() {\n  echo\n}\nf() {\n  local x=1\n}\n' > new.sh
+          git add old.sh new.sh
+          git commit -qm "error and warning in changed lines"
+
+          set +e
+          bash -eo pipefail "$RUNNER_TEMP/scan.sh" | tee out.txt
+          status="${PIPESTATUS[0]}"
+          set -e
+          ((status == 1)) || { echo "::error::expected the error in changed lines to fail the job, got $status"; exit 1; }
+          grep -q '^::error file=new.sh,line=1,.*title=bash_function_name_snake_case' out.txt
+          grep -q '^::warning file=new.sh,line=5,.*title=bash_local_underscore_prefix' out.txt
+          ! grep -q 'old.sh' out.txt || { echo "::error::an existing violation was reported"; exit 1; }
+
+          # Only a warning in the changed lines: annotate and pass.
+          printf 'g() {\n  local y=1\n}\n' > warn.sh
+          git add warn.sh
+          git commit -qm "warning only"
+          bash -eo pipefail "$RUNNER_TEMP/scan.sh" | tee out.txt
+          grep -q '^::warning file=warn.sh' out.txt
+          ! grep -q '^::error' out.txt || { echo "::error::a warning failed the job"; exit 1; }
+
   claude-review:
     uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]
     permissions:
@@ -80,6 +152,8 @@ jobs:
       - nix-lint
       - nix-check
       - nix-setup
+      - ast-grep
+      - ast-grep-fixture
       - claude-review
       - codex-review
     runs-on: ubuntu-24.04

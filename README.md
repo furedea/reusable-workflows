@@ -6,6 +6,7 @@ Reusable GitHub Actions workflows (`on: workflow_call`) shared by furedea reposi
 
 Shared workflows, called from the `ci.yml` of other repositories (each has a section below):
 
+- `ast-grep.yml`
 - `claude-review.yml`
 - `codex-review.yml`
 - `gha-lint.yml`
@@ -47,6 +48,47 @@ GitHub App, so that the release PR triggers CI; a PR opened with `GITHUB_TOKEN` 
 Contents, Issues and Pull requests permissions (read and write) and must be installed on this repository, which
 needs the variable `RELEASE_APP_CLIENT_ID` (the App's Client ID) and the secret `RELEASE_APP_PRIVATE_KEY`. The workflow mints a token for
 this repository only with `actions/create-github-app-token`.
+
+## ast-grep.yml
+
+Runs the ast-grep rules of [furedea/agent-config](https://github.com/furedea/agent-config)
+(`agents/hooks/lint/sgconfig.yml`) against the files that a pull request changes. The rules stay in agent-config, the
+single source of truth of each rule (ADR-0021 there); the workflow checks agent-config out at a pinned commit and never
+copies the rules. Model-judged rules (jev-lint) are not run: they need API keys and stay advisory (ADR-0020).
+
+- **When it scans.** Only on `pull_request` events. In every other case the job succeeds without scanning, so callers
+  need no `if`. There is no baseline file and no scan of the whole tree.
+- **Which findings count.** The scan covers the added and modified files of the pull request and keeps a finding only
+  when its range (the matched node, for example a whole function or job) contains a line the pull request changed. The
+  changed lines come from `git diff -U0 HEAD^1 HEAD`: `HEAD` is the merge commit of the pull request, so the line
+  numbers are those of the scanned tree. Violations that already exist in untouched lines are neither reported nor
+  gating, so the first run in a repository does not fail on old code.
+- **What fails the job.** A finding with `severity: error`, the level that ADR-0021 lets block (a rule judges one
+  local construct, and "a rule is either enabled as `error` or deleted"; the revision in furedea/agent-config#203).
+  Findings of any other severity are annotations (`warning`, or `notice`) and do not fail the job. Each annotation
+  carries the rule's `message` and `note` (how to fix it).
+- **Not run.** A repository's own `sgconfig.yml` is not read; only the shared rules apply.
+
+| Input              | Default                       | Meaning                                              |
+| ------------------ | ----------------------------- | ---------------------------------------------------- |
+| `agent-config-ref` | a full SHA of agent-config    | Commit of agent-config whose rules are applied       |
+
+```yaml
+jobs:
+    ast-grep:
+        uses: furedea/reusable-workflows/.github/workflows/ast-grep.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+```
+
+Add `ast-grep` to `all-green`'s `needs`. Renovate moves the default `agent-config-ref` (`customManagers`), so a new
+release of this repository carries new rules; pass `agent-config-ref` to pin a different commit. ast-grep 0.42.1 comes
+from the nixpkgs revision `NIXPKGS_REV` in the workflow, the revision of agent-config's `flake.lock`; update it together
+with agent-config's lock file, not with the nixpkgs pin of `nix-lint.yml`.
+
+`ci.yml` tests it twice: it calls the workflow on this repository's own pull requests, and the `ast-grep-fixture` job
+runs the workflow's scan step on a small repository to check that an error in changed lines fails, that an old
+violation in a touched file is ignored, and that a warning only annotates.
 
 ## claude-review.yml
 
