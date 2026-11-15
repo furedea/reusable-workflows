@@ -45,6 +45,31 @@ jobs:
       - name: No-op
         run: "true"
 
+  # A pull request that is skipped on purpose (for example a Renovate PR) has no gate, so a required
+  # codex-review/gate would wait forever. Report success for it. Fork pull requests get a read-only
+  # token and cannot be reported; do not require the gate where forks are accepted.
+  skip:
+    name: Report that no review is required
+    needs: should-review
+    if: >-
+      !cancelled() && needs.should-review.outputs.run != 'true'
+      && github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    permissions:
+      statuses: write
+    steps:
+      - name: Post a success status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api "repos/$REPO/statuses/$HEAD_SHA" -f state=success -f context="$STATUS_CONTEXT" \
+            -f description="Codex review not required for this pull request" -f target_url="$RUN_URL" >/dev/null
+
   # Requests the review and waits until Codex has reviewed the head commit. It never decides
   # pass or fail; the gate does.
   review:
@@ -110,7 +135,7 @@ jobs:
   gate:
     name: Codex gate
     needs: [should-review, review]
-    if: always() && needs.should-review.outputs.run == 'true'
+    if: ${{ !cancelled() && needs.should-review.outputs.run == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -160,28 +185,36 @@ jobs:
             *) finish pending "Waiting for Codex to review $short" ;;
           esac
 
-          # A reply is followed by the resolve, so give it a moment before counting.
-          if [[ "$EVENT_NAME" == pull_request_review_comment ]]; then
-            sleep 20
-          fi
-
           # shellcheck disable=SC2016 # the GraphQL variables are not shell variables
-          unresolved="$(gh api graphql --paginate \
-            -F owner="${REPO%%/*}" -F name="${REPO##*/}" -F number="$PR_NUMBER" \
-            -f query='query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
-              repository(owner: $owner, name: $name) {
-                pullRequest(number: $number) {
-                  reviewThreads(first: 100, after: $endCursor) {
-                    nodes { isResolved comments(first: 1) { nodes { author { login } } } }
-                    pageInfo { hasNextPage endCursor }
+          count_unresolved() {
+            gh api graphql --paginate \
+              -F owner="${REPO%%/*}" -F name="${REPO##*/}" -F number="$PR_NUMBER" \
+              -f query='query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) {
+                    reviewThreads(first: 100, after: $endCursor) {
+                      nodes { isResolved comments(first: 1) { nodes { author { login } } } }
+                      pageInfo { hasNextPage endCursor }
+                    }
                   }
                 }
-              }
-            }' \
-            --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-              | select(.isResolved | not)
-              | select(.comments.nodes[0].author.login | IN(env.CODEX_LOGIN, env.CODEX_LOGIN + "[bot]"))
-              | 1' | wc -l | tr -d ' ')"
+              }' \
+              --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+                | select(.isResolved | not)
+                | select(.comments.nodes[0].author.login | IN(env.CODEX_LOGIN, env.CODEX_LOGIN + "[bot]"))
+                | 1' | wc -l | tr -d ' '
+          }
+
+          # A reply is followed by the resolve, which can arrive late. On a reply, recount for up to
+          # a minute and stop as soon as no thread is left.
+          unresolved="$(count_unresolved)"
+          if [[ "$EVENT_NAME" == pull_request_review_comment ]]; then
+            for _ in 1 2 3 4 5 6; do
+              [[ "$unresolved" != 0 ]] || break
+              sleep 10
+              unresolved="$(count_unresolved)"
+            done
+          fi
 
           if [[ "$unresolved" == 0 ]]; then
             finish success "No unresolved Codex threads on $short"
