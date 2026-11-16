@@ -179,7 +179,9 @@ jobs:
             success:timeout) finish failure "Codex did not review $short within 20 minutes." ;;
           esac
 
-          case "$(codex_state_field)" in
+          # A plain assignment, so a failed API call reaches the ERR trap instead of reading as "not reviewed yet".
+          codex_status="$(codex_state_field)"
+          case "$codex_status" in
             completed) ;;
             failed) finish failure "Codex could not review $short (for example, usage limits)." ;;
             *) finish pending "Waiting for Codex to review $short" ;;
