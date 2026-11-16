@@ -133,6 +133,23 @@ check_bodies() {
   [[ $output == *"0001_decision.md"* ]]
 }
 
+@test "rejects a body change when the directory is spelled with ./ and a trailing slash" {
+  setup_repo accepted
+  printf 'More.\n' >>docs/adr/0001_decision.md
+  run "$BATS_TEST_DIRNAME/../$ACTION/check_accepted_body.sh" ./docs/adr/ "$BASE"
+  [ "$status" -eq 1 ]
+}
+
+@test "treats a directory name with regular-expression characters literally" {
+  setup_repo accepted
+  git mv docs/adr docs/adr+records
+  git commit -q -m move
+  BASE=$(git rev-parse HEAD)
+  printf 'More.\n' >>docs/adr+records/0001_decision.md
+  run "$BATS_TEST_DIRNAME/../$ACTION/check_accepted_body.sh" docs/adr+records "$BASE"
+  [ "$status" -eq 1 ]
+}
+
 @test "allows a front-matter change of an accepted ADR" {
   setup_repo accepted
   printf -- '---\nstatus: accepted\ndate: 2026-02-02\namended: ["2026-02-02: note"]\n---\n\n# Title\n\nBody.\n' >docs/adr/0001_decision.md

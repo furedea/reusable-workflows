@@ -9,6 +9,8 @@ set -euo pipefail
 main() {
   local _adr_dir=${1:?usage: check_accepted_body.sh <adr-dir> <base-sha>}
   local _base_sha=${2:?usage: check_accepted_body.sh <adr-dir> <base-sha>}
+  _adr_dir=${_adr_dir#./}
+  _adr_dir=${_adr_dir%/}
   local _base_file _id _head_file _head_files _failed=0
 
   git cat-file -e "$_base_sha^{commit}" || {
@@ -16,7 +18,7 @@ main() {
     exit 1
   }
 
-  while IFS= read -r _base_file; do
+  while IFS= read -r -d '' _base_file; do
     [[ $(base_status "$_base_sha" "$_base_file") == accepted ]] || continue
     _id=$(basename "$_base_file")
     _id=${_id%%_*}
@@ -37,9 +39,15 @@ main() {
   echo "accepted ADR bodies unchanged"
 }
 
-# Prints the paths of the ADRs (NNNN_*.md directly in the directory) at the base commit.
+# Prints, NUL-terminated, the paths of the ADRs (NNNN_*.md directly in the directory) at the base
+# commit. The directory is compared literally and git's path quoting is off (-z).
 base_adr_files() {
-  git ls-tree --name-only "$1" -- "$2/" | grep -E "^$2/[0-9]{4}_[^/]+\.md$" || true
+  local _path _name
+  while IFS= read -r -d '' _path; do
+    _name=${_path##*/}
+    [[ $_path == "$2/$_name" && $_name =~ ^[0-9]{4}_[^/]+\.md$ ]] && printf '%s\0' "$_path"
+  done < <(git ls-tree -z --name-only "$1" -- "$2/")
+  return 0
 }
 
 base_status() {

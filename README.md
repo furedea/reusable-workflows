@@ -196,6 +196,9 @@ checks run in this order, and the job fails at the first one that fails:
    renumbered, and its body (everything after the front matter) must not change. Front-matter changes are allowed. The ADR is matched to its base version by the
    `NNNN` prefix, so a rename does not hide a change. Write a new ADR that supersedes it instead.
 
+Only `<adr-dir>/.markdownlint.yml` is merged. markdownlint-cli2 uses the first of `.markdownlint.jsonc`, `.json`, `.yaml`,
+`.yml` (and a `.markdownlint-cli2.*` file) that it finds in a directory, so a caller must use that name and no other.
+
 Anything that does not match the fixed shape is a violation; nothing is interpreted (no prose metadata, no other
 formats). A violation line never repeats file content.
 
