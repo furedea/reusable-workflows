@@ -171,8 +171,8 @@ jobs:
           # request from a trusted author (anyone else could move the request time and hold the gate), so a rerun or reopen on the same head SHA stays pending until its fresh result.
           codex_state_field() {
             local comments requested_at
-            comments="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate --jq '.[]')"
-            requested_at="$(jq -rs '[.[] | select(.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")) | select((.body | gsub("\\s+$"; "") | ascii_downcase) == "@codex review") | .created_at] | max // ""' <<<"$comments")"
+            comments="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate --jq '.[]')" || return 1
+            requested_at="$(jq -rs '[.[] | select(.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")) | select((.body | gsub("\\s+$"; "") | ascii_downcase) == "@codex review") | .created_at] | max // ""' <<<"$comments")" || return 1
             jq -r --arg req "$requested_at" \
               'select(.user.login == "chatgpt-codex-connector[bot]" and .updated_at >= $req) | .body' <<<"$comments" \
               | sed -n 's/.*<!-- codex-review-state:v1 \(.*\) -->.*/\1/p' | tail -n 1 \
@@ -184,7 +184,8 @@ jobs:
             success:timeout) finish failure "Codex did not review $short within 20 minutes." ;;
           esac
 
-          # A plain assignment, so a failed API call reaches the ERR trap instead of reading as "not reviewed yet".
+          # A plain assignment, and the function returns on a failed call (errexit is off inside a command
+          # substitution), so the failure reaches the ERR trap instead of reading as "not reviewed yet".
           codex_status="$(codex_state_field)"
           case "$codex_status" in
             completed) ;;
