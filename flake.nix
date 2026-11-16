@@ -15,6 +15,7 @@
     {
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
+          bats
           commitlint
           deadnix
           # lefthook before 2.1.6 runs hooks under a pty, which agent sandboxes deny.
@@ -22,6 +23,8 @@
           ls-lint
           nixfmt
           statix
+          # Needed by tests/adr_front_matter.bats (the adr-front-matter action reads front matter with it).
+          yq-go
           # Add language toolchain here (uv, pnpm, cargo, go, ...).
         ];
       };
