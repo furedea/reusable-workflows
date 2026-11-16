@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: proposed
 date: 2026-01-01
 amended:
   - "2026-02-01: clarified the scope"
