@@ -32,10 +32,14 @@ jobs:
       RULES_DIR: .agent-config-rules
     steps:
       # Only a pull request has a diff to filter by; every other event succeeds without scanning.
+      # The head of the pull request, not the default merge commit: reviewdog filters by the diff that the API gives
+      # for the head, so the scanned lines must be the head's lines even when the base branch has moved.
       - name: Checkout repository
         if: github.event_name == 'pull_request'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Checkout the ast-grep rules
@@ -64,7 +68,8 @@ jobs:
 
           sarif="$(mktemp)"
           status=0
-          ast_grep scan --config "$RULES_DIR/agents/hooks/lint/sgconfig.yml" --format sarif >"$sarif" || status=$?
+          # --no-ignore hidden: ast-grep skips hidden directories such as .github, where the workflow rules apply.
+          ast_grep scan --config "$RULES_DIR/agents/hooks/lint/sgconfig.yml" --no-ignore hidden --format sarif >"$sarif" || status=$?
           # ast-grep exits 1 for error-level findings and for a broken configuration alike, and writes SARIF only
           # when it scanned, so no output means that nothing was scanned.
           if ((status > 1)) || [[ ! -s $sarif ]]; then
