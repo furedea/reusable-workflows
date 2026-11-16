@@ -47,8 +47,8 @@ jobs:
         uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
 
       # markdownlint-cli2 applies the nearest config of a directory instead of merging it with --config, so the
-      # base settings are the --config fallback, and a caller's <adr-dir>/.markdownlint.yml is made to extend them
-      # inside this job's workspace (the caller's own keys win).
+      # base settings are the --config fallback, and a caller's <adr-dir>/.markdownlint.yml is merged over them
+      # inside this job's workspace (the caller's keys win, including its own `extends`).
       - name: Run markdownlint
         run: |
           base="$RUNNER_TEMP/markdownlint-base.yml"
@@ -56,8 +56,9 @@ jobs:
           # The MADR project's own settings.
           printf '%s\n' 'default: true' 'MD013: false' 'MD024: false' >"$base"
           if [[ -f $caller ]]; then
-            { printf 'extends: %s\n' "$base"; cat "$caller"; } >"$RUNNER_TEMP/markdownlint-caller.yml"
-            cp "$RUNNER_TEMP/markdownlint-caller.yml" "$caller"
+            # shellcheck disable=SC2016 # the $item is yq's variable
+            nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#yq-go" -- eval-all '. as $item ireduce ({}; . * $item)' "$base" "$caller" >"$RUNNER_TEMP/markdownlint-merged.yml"
+            cp "$RUNNER_TEMP/markdownlint-merged.yml" "$caller"
           fi
           nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#markdownlint-cli2" -- --config "$base" "$ADR_DIR/**/*.md"
 

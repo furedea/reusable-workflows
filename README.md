@@ -234,7 +234,7 @@ run in this order, and the job fails at the first one that fails:
 1. markdownlint-cli2 over `<adr-dir>/**/*.md` only. The base settings are the MADR project's own (`default: true`,
    `MD013` and `MD024` off). markdownlint applies a directory's config instead of merging it with `--config`, so
    the base is passed as `--config` and, when the caller has `<adr-dir>/.markdownlint.yml` (for example `MD043` for
-   the heading structure), the job makes that file `extends` the base inside its own workspace: the caller's keys win.
+   the heading structure), the job merges that file over the base with yq inside its own workspace: the caller's keys win, including its own `extends`.
    Only the name `.markdownlint.yml` is handled.
 2. `lychee --offline` over `<adr-dir>`: links between ADRs.
 3. `adr-check`, the command of furedea/agent-config (its ADR-0026), run with `nix run` at `agent-config-ref`. It
