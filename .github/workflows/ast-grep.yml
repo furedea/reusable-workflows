@@ -73,19 +73,22 @@ jobs:
             exit "$status"
           fi
 
-          git -c core.quotePath=false diff -U0 --no-renames --diff-filter=ACMR HEAD^1 HEAD |
-            python3 -c '
-          import json, re, sys
+          python3 -c '
+          import json, re, subprocess, sys
 
+          def git(*args):
+              return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
+
+          # Name the files with -z and ask for each one separately: the "+++" header of a diff quotes or pads
+          # unusual paths, so it cannot be compared with the path that ast-grep reports.
           changed = {}
-          path = None
-          for line in sys.stdin.read().splitlines():
-              if line.startswith("+++ b/"):
-                  path = line[6:]
-                  changed.setdefault(path, set())
-              elif path and (m := re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line)):
-                  start, count = int(m[1]), int(m[2] if m[2] is not None else 1)
-                  changed[path].update(range(start, start + count))
+          names = git("diff", "-z", "--name-only", "--no-renames", "--diff-filter=ACMR", "HEAD^1", "HEAD")
+          for path in filter(None, names.split("\0")):
+              lines = changed.setdefault(path, set())
+              for line in git("diff", "-U0", "--no-renames", "HEAD^1", "HEAD", "--", path).splitlines():
+                  if m := re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line):
+                      start, count = int(m[1]), int(m[2] if m[2] is not None else 1)
+                      lines.update(range(start, start + count))
 
           def escape(text):
               return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")

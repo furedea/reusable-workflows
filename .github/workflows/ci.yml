@@ -110,7 +110,8 @@ jobs:
           # An existing violation in a touched file, a new violation, and a new warning.
           printf '# touched\n' >> old.sh
           printf 'BadNew() {\n  echo\n}\nf() {\n  local x=1\n}\n' > new.sh
-          git add old.sh new.sh
+          printf 'BadSpaced() {\n  echo\n}\n' > "with space.sh"
+          git add old.sh new.sh "with space.sh"
           git commit -qm "error and warning in changed lines"
 
           set +e
@@ -120,6 +121,7 @@ jobs:
           ((status == 1)) || { echo "::error::expected the error in changed lines to fail the job, got $status"; exit 1; }
           grep -q '^::error file=new.sh,line=1,.*title=bash_function_name_snake_case' out.txt
           grep -q '^::warning file=new.sh,line=5,.*title=bash_local_underscore_prefix' out.txt
+          grep -q '^::error file=with space.sh,line=1,' out.txt
           ! grep -q 'old.sh' out.txt || { echo "::error::an existing violation was reported"; exit 1; }
 
           # Only a warning in the changed lines: annotate and pass.
