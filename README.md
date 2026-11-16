@@ -100,8 +100,13 @@ Two jobs split the work:
   otherwise. On `pull_request_review_comment` it recounts for up to a minute while threads remain, because the resolve follows the reply.
 
 Resolving a thread therefore turns the status green without re-running the review. Reply to a thread before
-resolving it: the reply is what triggers the gate. A resolve without a reply raises no event; re-run the gate
+resolving it: the reply is what triggers the gate. Resolving a thread raises the `pull_request_review_thread` webhook, but that is not a workflow trigger in GitHub
+Actions (`actionlint` rejects it too), so a resolve alone starts no run. A resolve more than a minute after the
+reply, or without a reply, leaves the status as it was; re-run the gate
 run of the pull request to refresh the status.
+
+The gate treats the Codex summary as current only when it was updated after the latest `@codex review` request
+on the pull request, so a rerun or reopen on the same head stays pending until its fresh result.
 
 Pull requests that are skipped on purpose (opened by a bot other than `furedea-agent[bot]`) get a `success`
 status, "Codex review not required", so the required check never waits. Fork pull requests get a read-only token
