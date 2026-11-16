@@ -74,23 +74,22 @@ jobs:
             status="$(jq -r '.code_review.status // empty' <<<"$state" 2>/dev/null || true)"
             if [[ "$sha" == "$HEAD_SHA" && ( "$status" == "completed" || "$status" == "failed" ) ]]; then
               echo "status=$status" >>"$GITHUB_OUTPUT"
-              echo "unresolved=$(jq -r '.code_review.has_unresolved_findings' <<<"$state")" >>"$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 30
           done
           echo "status=timeout" >>"$GITHUB_OUTPUT"
 
-      - name: Fail unless the review passed
+      # Findings do not fail the job: they stay as unresolved review threads, and the ruleset's
+      # required_review_thread_resolution blocks the merge until they are resolved.
+      - name: Fail unless Codex reviewed the head commit
         if: always()
         env:
           STATUS: ${{ steps.wait.outputs.status }}
-          UNRESOLVED: ${{ steps.wait.outputs.unresolved }}
         run: |
-          case "$STATUS:$UNRESOLVED" in
-            completed:false) echo "Codex review of $HEAD_SHA: no unresolved findings." >>"$GITHUB_STEP_SUMMARY" ;;
-            completed:*) message="Codex left unresolved findings on $HEAD_SHA. Fix them, or resolve a refuted one with evidence in its thread." ;;
-            failed:*) message="Codex could not review $HEAD_SHA (for example, usage limits). Read its summary comment on the pull request." ;;
+          case "$STATUS" in
+            completed) echo "Codex reviewed $HEAD_SHA. Findings, if any, remain as unresolved review threads." >>"$GITHUB_STEP_SUMMARY" ;;
+            failed) message="Codex could not review $HEAD_SHA (for example, usage limits). Read its summary comment on the pull request." ;;
             *) message="Codex did not review $HEAD_SHA within 20 minutes. Check the Codex connector settings and that the token is valid (\`repo review-token rotate\`)." ;;
           esac
           if [[ -n "${message:-}" ]]; then

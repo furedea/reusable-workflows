@@ -1,0 +1,80 @@
+name: ast-grep (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      agent-config-ref:
+        description: Full commit SHA of furedea/agent-config whose ast-grep rules are applied
+        type: string
+        # renovate: depName=furedea/agent-config
+        default: da23715e33372511d4ce73dedc16b12fa2765fe2
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ast-grep:
+    name: ast-grep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read # reviewdog fetches the diff of the pull request
+    env:
+      # nixos-unstable revision that provides reviewdog, the one of nix-lint.yml and gha-lint.yml; Renovate updates it.
+      # ast-grep is not pinned here: it comes from the nixpkgs of agent-config's flake.lock at `agent-config-ref`, so
+      # that CI runs the ast-grep that the agent hooks run.
+      NIXPKGS_REV: f9a75f41be3a74eab55d3a7679d34ad6cc0da977
+      AGENT_CONFIG_REF: ${{ inputs.agent-config-ref }}
+      RULES_DIR: .agent-config-rules
+    steps:
+      # Only a pull request has a diff to filter by; every other event succeeds without scanning.
+      # The head of the pull request, not the default merge commit: reviewdog filters by the diff that the API gives
+      # for the head, so the scanned lines must be the head's lines even when the base branch has moved.
+      - name: Checkout repository
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Checkout the ast-grep rules
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: furedea/agent-config
+          ref: ${{ inputs.agent-config-ref }}
+          path: ${{ env.RULES_DIR }}
+          persist-credentials: false
+
+      - name: Install Nix
+        if: github.event_name == 'pull_request'
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      # ast-grep writes SARIF, which reviewdog parses natively. reviewdog fetches the diff of the pull request with
+      # the token and reports the findings on added or modified lines as annotations (`-filter-mode=added`); it fails
+      # the job on `error`.
+      - name: Report findings on changed lines
+        if: github.event_name == 'pull_request'
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ github.token }}
+        run: |
+          ast_grep() { nix run --inputs-from "github:furedea/agent-config/$AGENT_CONFIG_REF" nixpkgs#ast-grep -- "$@"; }
+          reviewdog() { nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#reviewdog" -- "$@"; }
+
+          sarif="$(mktemp)"
+          status=0
+          # --no-ignore hidden: ast-grep skips hidden directories such as .github, where the workflow rules apply.
+          ast_grep scan --config "$RULES_DIR/agents/hooks/lint/sgconfig.yml" --no-ignore hidden --format sarif >"$sarif" || status=$?
+          # ast-grep exits 1 for error-level findings and for a broken configuration alike, and writes SARIF only
+          # when it scanned, so no output means that nothing was scanned.
+          if ((status > 1)) || [[ ! -s $sarif ]]; then
+            echo "::error::ast-grep failed with exit status $status"
+            exit 1
+          fi
+
+          reviewdog -f=sarif -name=ast-grep -reporter=github-pr-annotations -filter-mode=added -fail-level=error <"$sarif"

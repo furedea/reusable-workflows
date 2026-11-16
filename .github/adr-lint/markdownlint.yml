@@ -1,5 +1,0 @@
-# Base markdownlint settings for ADRs: the MADR project's own settings. A repository's
-# <adr-dir>/.markdownlint.yml (for example MD043 for the heading structure) is merged over this file.
-default: true
-MD013: false
-MD024: false

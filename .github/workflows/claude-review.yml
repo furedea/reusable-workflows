@@ -75,46 +75,21 @@ jobs:
             Post each finding as an inline comment with
             mcp__github_inline_comment__create_inline_comment, starting the comment with its tag.
             Then post one top-level summary with `gh pr comment`.
-            Finally return structured output where blocking_findings is the number of P0 and P1 findings.
           claude_args: |
             --model claude-sonnet-5-5
             --effort high
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
-            --json-schema '{"type":"object","properties":{"blocking_findings":{"type":"integer","minimum":0}},"required":["blocking_findings"]}'
 
-      - name: Fail on blocking findings
-        id: gate
-        env:
-          STRUCTURED_OUTPUT: ${{ steps.review.outputs.structured_output }}
-        run: |
-          blocking="$(jq -r '.blocking_findings' <<<"$STRUCTURED_OUTPUT" 2>/dev/null || true)"
-          if [[ ! "$blocking" =~ ^[0-9]+$ ]]; then
-            echo "reason=invalid-output" >>"$GITHUB_OUTPUT"
-            echo "::error::Review returned no valid blocking_findings: ${STRUCTURED_OUTPUT:-<empty>}"
-            exit 1
-          fi
-          echo "Blocking findings (P0 and P1): $blocking" >>"$GITHUB_STEP_SUMMARY"
-          if ((blocking >= 1)); then
-            message="$blocking blocking finding(s) (P0/P1). Read the inline review comments on the pull request."
-            echo "$message" >>"$GITHUB_STEP_SUMMARY"
-            echo "::error::$message"
-            exit 1
-          fi
-
+      # Findings do not fail the job: they stay as inline review threads, and the ruleset's
+      # required_review_thread_resolution blocks the merge until they are resolved.
       - name: Explain review failure
         if: failure()
         env:
-          REVIEW_OUTCOME: ${{ steps.review.outcome }}
-          GATE_REASON: ${{ steps.gate.outputs.reason }}
           TOKEN_PRESENT: ${{ secrets.claude_code_oauth_token != '' }}
         run: |
           {
             echo "### Claude review failed"
-            if [[ "$GATE_REASON" == "invalid-output" ]]; then
-              echo "- The review returned no valid blocking_findings (malformed structured output). Re-run the check; if it repeats, read the job log."
-            elif [[ "$REVIEW_OUTCOME" == "success" ]]; then
-              echo "- Blocking findings (P0/P1): read the inline review comments on the pull request."
-            elif [[ "$TOKEN_PRESENT" != "true" ]]; then
+            if [[ "$TOKEN_PRESENT" != "true" ]]; then
               echo "- The OAuth token was not passed to this run (for example a Dependabot-triggered run). Check the secret is available to it."
             else
               echo "- The review step failed. If the log shows an authentication error, the token expired: run \`repo review-token rotate\`."

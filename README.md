@@ -6,6 +6,7 @@ Reusable GitHub Actions workflows (`on: workflow_call`) shared by furedea reposi
 
 Shared workflows, called from the `ci.yml` of other repositories (each has a section below):
 
+- `ast-grep.yml`
 - `claude-review.yml`
 - `codex-review.yml`
 - `gha-lint.yml`
@@ -16,8 +17,7 @@ Shared workflows, called from the `ci.yml` of other repositories (each has a sec
 - `release-pr.yml`
 - `release-publish.yml`
 
-Composite actions, called as a step: `.github/actions/nix-setup` (see "nix-setup (composite action)" below) and
-`.github/actions/adr-front-matter` (used by `adr-lint.yml`; see its section).
+Composite action, called as a step: `.github/actions/nix-setup` (see "nix-setup (composite action)" below).
 
 Workflows for this repository only, not meant to be called from elsewhere:
 
@@ -50,10 +50,63 @@ Contents, Issues and Pull requests permissions (read and write) and must be inst
 needs the variable `RELEASE_APP_CLIENT_ID` (the App's Client ID) and the secret `RELEASE_APP_PRIVATE_KEY`. The workflow mints a token for
 this repository only with `actions/create-github-app-token`.
 
+## ast-grep.yml
+
+Runs the ast-grep rules of [furedea/agent-config](https://github.com/furedea/agent-config)
+(`agents/hooks/lint/sgconfig.yml`) against the files that a pull request changes. The rules stay in agent-config, the
+single source of truth of each rule (ADR-0021 there); the workflow checks agent-config out at a pinned commit and never
+copies the rules. Model-judged rules (jev-lint) are not run: they need API keys and stay advisory (ADR-0020).
+
+- **When it scans.** Only on `pull_request` events. In every other case the job succeeds without scanning, so callers
+  need no `if`. There is no baseline file and no scan of the whole tree.
+- **Which findings count.** ast-grep scans the whole checkout, and
+  [reviewdog](https://github.com/reviewdog/reviewdog) keeps the findings on added or modified lines
+  (`-filter-mode=added`) of the diff of the pull request, which it fetches from the API; a pure rename changes no
+  line. The checkout of agent-config's rules, inside the workspace, is scanned too, and its findings are dropped
+  because they are outside the diff. reviewdog compares the start line of a finding, so a finding on a function counts
+  when its first line changed. Violations that already exist in untouched lines are neither reported nor gating, so
+  the first run in a repository does not fail on old code.
+- **What fails the job.** A finding with `severity: error`, the level that ADR-0021 lets block (a rule judges one
+  local construct, and "a rule is either enabled as `error` or deleted"; the revision in furedea/agent-config#203).
+  Findings of any other severity are annotations and do not fail the job. ast-grep's SARIF output carries the
+  rule's `message` but not its `note`.
+- **Not run.** A repository's own `sgconfig.yml` is not read; only the shared rules apply.
+
+| Input              | Default                       | Meaning                                              |
+| ------------------ | ----------------------------- | ---------------------------------------------------- |
+| `agent-config-ref` | a full SHA of agent-config    | Commit of agent-config whose rules are applied       |
+
+```yaml
+jobs:
+    ast-grep:
+        uses: furedea/reusable-workflows/.github/workflows/ast-grep.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+            pull-requests: read
+```
+
+Add `ast-grep` to `all-green`'s `needs`. Renovate moves the default `agent-config-ref` (`customManagers`), so a new
+release of this repository carries new rules; pass `agent-config-ref` to pin a different commit.
+
+ast-grep is not pinned in this workflow: it is installed with
+`nix run --inputs-from github:furedea/agent-config/<agent-config-ref> nixpkgs#ast-grep`, which resolves nixpkgs from
+agent-config's `flake.lock` at that commit, so `agent-config-ref` is the only pin and CI runs the ast-grep that the
+agent hooks run. reviewdog comes from the `NIXPKGS_REV` of the workflow, the nixpkgs revision that `nix-lint.yml` and
+`gha-lint.yml` use; Renovate moves the revision in the three files together.
+
+The scan is `ast-grep scan --format sarif | reviewdog -f=sarif -reporter=github-pr-annotations -filter-mode=added
+-fail-level=error`, the way reviewdog documents its use in GitHub Actions: it fetches the diff of the pull request
+with the job's `github.token` (`REVIEWDOG_GITHUB_API_TOKEN`), which is why the job needs `pull-requests: read` besides
+`contents: read`. The caller must grant both.
+
+`ci.yml` calls the workflow on this repository's own pull requests; that run is its test.
+
 ## claude-review.yml
 
 Reviews every same-repository pull request with Claude Code. It posts P0 to P3 findings as inline comments
-and a summary comment, and fails when there is at least one P0 or P1 finding. Fork pull requests are skipped
+and a summary comment. Findings do not fail the job; they stay as unresolved review threads, and the ruleset's
+`required_review_thread_resolution` blocks the merge until they are resolved. The calling repository must set it
+to `true`. The job fails only when the review itself fails (for example an expired token). Fork pull requests are skipped
 because secrets are not passed to them. Pull requests opened by bots other than `furedea-agent` (for example
 Renovate) are not reviewed, because the action rejects other bots. The workflow itself skips these cases, and
 runs only for `pull_request` events, so callers need no `if`.
@@ -89,10 +142,13 @@ The caller needs the repository secret `CLAUDE_CODE_OAUTH_TOKEN`.
 Asks the Codex GitHub connector to review every same-repository pull request, on open and on every push, and
 waits for its result. Codex ignores review requests from bots and charges repository-wide automatic reviews to
 credits, so the workflow posts `@codex review` with the repository owner's token; the review then runs on the
-owner's ChatGPT plan. The job reads the `codex-review-state` that Codex records in its summary comment and
-fails when the review of the head commit has unresolved findings, when Codex reports a failure (for example
-usage limits), or when no review arrives within 20 minutes. It skips the same pull requests as
-`claude-review.yml`.
+owner's ChatGPT plan. The job reads the `codex-review-state` that Codex records in its summary comment. It
+succeeds once Codex has completed the review of the head commit, whether or not it left findings, and fails when
+Codex reports a failure (for example usage limits), when no review arrives within 20 minutes, or when the request
+fails. It skips the same pull requests as `claude-review.yml`.
+
+Findings stay as unresolved review threads, and the ruleset's `required_review_thread_resolution` blocks the
+merge until they are resolved. The calling repository must set it to `true`.
 
 ```yaml
 jobs:
@@ -172,35 +228,22 @@ Add `nix-check` to `all-green`'s `needs`.
 
 ## adr-lint.yml
 
-Checks the MADR ADRs of the calling repository, whose shape is fixed by furedea/agent-config ADR-0025. The
-checks run in this order, and the job fails at the first one that fails:
+Checks the MADR ADRs of the calling repository, whose shape is fixed by furedea/agent-config ADR-0025. The checks
+run in this order, and the job fails at the first one that fails:
 
-1. markdownlint-cli2 over `<adr-dir>/**/*.md` only. The base settings are the MADR project's own (`MD013` and
-   `MD024` off, the rest default). markdownlint applies a directory's config instead of merging it with a base, so the
-   job merges the caller's `<adr-dir>/.markdownlint.yml` over the base in its own workspace (the caller carries `MD043` for
-   the heading structure there).
+1. markdownlint-cli2 over `<adr-dir>/**/*.md` only. The base settings are the MADR project's own (`default: true`,
+   `MD013` and `MD024` off). markdownlint applies a directory's config instead of merging it with `--config`, so
+   the base is passed as `--config` and, when the caller has `<adr-dir>/.markdownlint.yml` (for example `MD043` for
+   the heading structure), the job makes that file `extends` the base inside its own workspace: the caller's keys win.
+   Only the name `.markdownlint.yml` is handled.
 2. `lychee --offline` over `<adr-dir>`: links between ADRs.
-3. The `adr-front-matter` action reads each `NNNN_*.md` file's front matter with `yq` and rejects:
-   - front matter that is missing, not a YAML mapping, has a key outside `status`, `date`, `supersedes`,
-     `superseded-by`, `partly-superseded-by`, `amended`, `related`, `decision-makers`, `consulted`, `informed`, lacks
-     `status` or `date`, or has a value of the wrong type (`date` is `YYYY-MM-DD`, the reference keys are non-empty
-     lists of `ADR-NNNN` or `<repository>/ADR-NNNN`, `amended` is a list of `"YYYY-MM-DD: what changed"`);
-   - a `status` outside `proposed`, `accepted`, `rejected`, `deprecated`, `superseded`;
-   - duplicate IDs (the ID is the `NNNN` file-name prefix);
-   - a reference `ADR-NNNN` that does not exist (an ID with a repository prefix, such as `dotfiles/ADR-0016`, is not
-     resolved);
-   - `superseded-by` present unless the status is `superseded`, and the reverse;
-   - `supersedes: [X]` in one ADR when X's `superseded-by` or `partly-superseded-by` does not name it, and the
-     reverse.
-4. On pull requests only: an ADR whose version at the base commit has `status: accepted` must not be removed or
-   renumbered, and its body (everything after the front matter) must not change. Front-matter changes are allowed. The ADR is matched to its base version by the
-   `NNNN` prefix, so a rename does not hide a change. Write a new ADR that supersedes it instead.
+3. `adr-check`, the command of furedea/agent-config (its ADR-0026), run with `nix run` at `agent-config-ref`. It
+   checks the front-matter shape against a JSON Schema and the cross-file rules (duplicate IDs, a reference to a
+   missing ADR, `supersedes` / `superseded-by` / `partly-superseded-by` reciprocity). On pull requests it is run with
+   `--base <base sha>` and also rejects a change of the body of an ADR that is `accepted` at the base. The rules
+   belong to agent-config: the agent hooks run the same command on edit, so CI and the hooks cannot disagree.
 
-Only `<adr-dir>/.markdownlint.yml` is merged. markdownlint-cli2 uses the first of `.markdownlint.jsonc`, `.json`, `.yaml`,
-`.yml` (and a `.markdownlint-cli2.*` file) that it finds in a directory, so a caller must use that name and no other.
-
-Anything that does not match the fixed shape is a violation; nothing is interpreted (no prose metadata, no other
-formats). A violation line never repeats file content.
+Anything that does not match the fixed shape is a violation; nothing is interpreted (no other ADR formats).
 
 ```yaml
 jobs:
@@ -212,21 +255,19 @@ jobs:
             adr-dir: docs/adr # optional
 ```
 
-| Input     | Default    | Meaning                                              |
-| --------- | ---------- | ---------------------------------------------------- |
-| `adr-dir` | `docs/adr` | Directory of the ADRs, relative to the repository root |
+| Input              | Default             | Meaning                                                                             |
+| ------------------ | ------------------- | ----------------------------------------------------------------------------------- |
+| `adr-dir`          | `docs/adr`          | Directory of the ADRs, relative to the repository root                              |
+| `agent-config-ref` | a pinned commit SHA | Full commit SHA of furedea/agent-config whose `adr-check` is run; Renovate bumps it |
 
-Add `adr-lint` to `all-green`'s `needs`. The workflow checks out this repository at the called commit
-(`job.workflow_sha`) into `.reusable-workflows` of the job's workspace to run the action, because a reusable
-workflow resolves `./.github/actions/...` in the caller's repository. actionlint 1.7.12 does not know the
-`job.workflow_*` properties yet, so `.github/actionlint.yaml` ignores those two errors for this file.
+Add `adr-lint` to `all-green`'s `needs`. The job needs no checkout of this repository: the markdownlint base settings
+are written by the step, and `adr-check` comes from agent-config. On pull requests the job fetches the full history
+for `--base`.
 
-The action can also be used as a step on its own (`yq` v4 and git on `PATH`; `base-sha` needs the full history):
-`furedea/reusable-workflows/.github/actions/adr-front-matter@<full-commit-sha>` with inputs `adr-dir` and `base-sha`.
-
-The scripts are tested by `tests/adr_front_matter.bats` against the fixtures in `tests/adr-lint/fixtures` (one
-conforming directory and one directory per violation) and, for the accepted-body check, against temporary git
-repositories. `ci.yml` runs the tests and also calls `adr-lint.yml` on the conforming fixtures.
+This workflow replaced a bash implementation of the front-matter checks (an action with two scripts, bats tests and
+violation fixtures). A second implementation of the same rules next to agent-config's would drift from the one the
+hooks run, so the rules and their tests live only in agent-config. `ci.yml` calls `adr-lint.yml` on the conforming
+fixtures in `tests/adr-lint/fixtures/valid`, which proves that the workflow runs end to end.
 
 ## release-pr.yml and release-publish.yml
 
@@ -392,12 +433,11 @@ caller's repository, and a pinned `furedea/reusable-workflows/...@<sha>` cannot 
 Every tool these workflows run is pinned so that its content cannot change, not only its version string.
 Renovate updates each pin through the `customManagers` in `renovate.json`:
 
-- `nix-lint.yml`, `gha-lint.yml` and `adr-lint.yml` (and the `adr-front-matter-test` job of `ci.yml`): one nixpkgs
-  revision in the job env `NIXPKGS_REV` (the same value in all of them). It provides nixfmt, statix, deadnix,
-  actionlint, yq, markdownlint-cli2, lychee and bats, and a nixpkgs revision fixes every input by hash.
+- `nix-lint.yml`, `gha-lint.yml`, `ast-grep.yml` (reviewdog only) and `adr-lint.yml`: one nixpkgs revision in the job env
+  `NIXPKGS_REV` (the same value in all four files). It provides nixfmt, statix, deadnix, actionlint, markdownlint-cli2 and lychee, and a nixpkgs revision fixes every input by hash.
   The nixpkgs actionlint bundles shellcheck and pyflakes. It is run with `nix run` from this revision instead of
   a release asset download, because a release asset is not checksum-verified and can be replaced. Renovate moves
-  the revision in all files to the head of `nixos-unstable` in one pull request.
+  the revision in all four files to the head of `nixos-unstable` in one pull request.
 - `gha-lint.yml`: zizmor `version: 1.32.0`. The pinned SHA of `zizmor-action` carries a lockfile with hashes, so
   this version fixes the content of zizmor as well.
 - Nix and the Claude CLI are pinned by the SHA of the action that installs them (`install-nix-action` v31.11.3
