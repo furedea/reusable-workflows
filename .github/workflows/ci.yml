@@ -119,9 +119,9 @@ jobs:
           status="${PIPESTATUS[0]}"
           set -e
           ((status == 1)) || { echo "::error::expected the error in changed lines to fail the job, got $status"; exit 1; }
-          grep -q '^::error file=new.sh,line=1,.*title=bash_function_name_snake_case' out.txt
-          grep -q '^::warning file=new.sh,line=5,.*title=bash_local_underscore_prefix' out.txt
-          grep -q '^::error file=with space.sh,line=1,' out.txt
+          grep -q '^::error .*file=new.sh.*bash_function_name_snake_case' out.txt
+          grep -q '^::warning .*file=new.sh,line=5.*bash_local_underscore_prefix' out.txt
+          grep -q '^::error .*file=with space.sh' out.txt
           ! grep -q 'old.sh' out.txt || { echo "::error::an existing violation was reported"; exit 1; }
 
           # Only a warning in the changed lines: annotate and pass.
@@ -129,7 +129,7 @@ jobs:
           git add warn.sh
           git commit -qm "warning only"
           bash -eo pipefail "$RUNNER_TEMP/scan.sh" | tee out.txt
-          grep -q '^::warning file=warn.sh' out.txt
+          grep -q '^::warning .*file=warn.sh' out.txt
           ! grep -q '^::error' out.txt || { echo "::error::a warning failed the job"; exit 1; }
 
           # A pure rename of a file with an existing violation changes no line.

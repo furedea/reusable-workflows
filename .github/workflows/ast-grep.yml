@@ -23,8 +23,9 @@ jobs:
     permissions:
       contents: read
     env:
-      # nixpkgs revision that provides ast-grep 0.42.1, the revision in agent-config's flake.lock. Update it together
-      # with agent-config's, not to the head of nixos-unstable, so that CI and the agent hooks run the same ast-grep.
+      # nixpkgs revision that provides ast-grep 0.42.1 and reviewdog 0.21.0, the revision in agent-config's flake.lock.
+      # Update it with agent-config's, not to the head of nixos-unstable, so that CI and the agent hooks run the
+      # same tools.
       NIXPKGS_REV: 21691b79c41ba30a80b110523c943d8d45a0912b
       RULES_DIR: .agent-config-rules
     steps:
@@ -51,10 +52,18 @@ jobs:
 
       # HEAD is the merge commit of the pull request and HEAD^1 its base, so the diff holds exactly the lines the
       # pull request changes, in the line numbers of the tree that is scanned.
+      #
+      # ast-grep writes SARIF, which reviewdog parses natively. The first reviewdog keeps the findings on added or
+      # modified lines (`-filter-mode=added`) and rewrites them as rdjsonl. The second turns them into workflow
+      # annotations and fails on `error`; the annotation reporter does not filter by diff by itself, and the
+      # reporter that does needs the GitHub API. Neither reaches the network, so the token below is a placeholder
+      # that the annotation reporter insists on.
       - name: Scan changed lines
         if: github.event_name == 'pull_request'
         run: |
+          export REVIEWDOG_GITHUB_API_TOKEN=unused
           ast_grep() { nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#ast-grep" -- "$@"; }
+          reviewdog() { nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#reviewdog" -- "$@"; }
 
           mapfile -d '' changed < <(git diff -z --name-only -M --diff-filter=ACMR HEAD^1 HEAD)
           if ((${#changed[@]} == 0)); then
@@ -62,58 +71,15 @@ jobs:
             exit 0
           fi
 
-          findings="$(mktemp)"
-          set +e
-          ast_grep scan --config "$RULES_DIR/agents/hooks/lint/sgconfig.yml" --json=stream -- "${changed[@]}" >"$findings"
-          status=$?
-          set -e
-          # ast-grep exits 1 when it found an error-level finding, and also for a broken configuration or rule. An
-          # error-level finding is always in the output, so status 1 with no output is a failure to scan.
-          if ((status > 1)) || { ((status == 1)) && [[ ! -s $findings ]]; }; then
+          sarif="$(mktemp)"
+          status=0
+          ast_grep scan --config "$RULES_DIR/agents/hooks/lint/sgconfig.yml" --format sarif -- "${changed[@]}" >"$sarif" || status=$?
+          # ast-grep exits 1 for error-level findings and for a broken configuration alike, and writes SARIF only
+          # when it scanned, so no output means that nothing was scanned.
+          if ((status > 1)) || [[ ! -s $sarif ]]; then
             echo "::error::ast-grep failed with exit status $status"
             exit 1
           fi
 
-          python3 -c '
-          import json, re, subprocess, sys
-
-          def git(*args):
-              return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
-
-          # Name the files with -z and ask for each one separately: the "+++" header of a diff quotes or pads
-          # unusual paths, so it cannot be compared with the path that ast-grep reports. A renamed file is diffed
-          # with its source, so that only the lines it really changes count.
-          changed = {}
-          tokens = git("diff", "-z", "--name-status", "-M", "--diff-filter=ACMR", "HEAD^1", "HEAD").split("\0")
-          index = 0
-          while index + 1 < len(tokens):
-              paths = tokens[index + 1 : index + (3 if tokens[index][0] in "RC" else 2)]
-              index += 1 + len(paths)
-              lines = changed.setdefault(paths[-1], set())
-              for line in git("diff", "-U0", "-M", "HEAD^1", "HEAD", "--", *paths).splitlines():
-                  if m := re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line):
-                      start, count = int(m[1]), int(m[2] if m[2] is not None else 1)
-                      lines.update(range(start, start + count))
-
-          def escape(text, property=False):
-              text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-              return text.replace(":", "%3A").replace(",", "%2C") if property else text
-
-          level = {"error": "error", "warning": "warning"}
-          failed = False
-          with open(sys.argv[1]) as stream:
-              for raw in stream:
-                  try:
-                      f = json.loads(raw)
-                  except ValueError:
-                      continue
-                  first, last = f["range"]["start"]["line"] + 1, f["range"]["end"]["line"] + 1
-                  if not changed.get(f["file"], set()).intersection(range(first, last + 1)):
-                      continue
-                  kind = level.get(f["severity"], "notice")
-                  failed = failed or kind == "error"
-                  text = f["message"] + (" Fix: " + f["note"] if f.get("note") else "")
-                  where = "file=%s,line=%d,endLine=%d,title=%s" % (escape(f["file"], True), first, last, escape(f["ruleId"], True))
-                  print("::%s %s::%s" % (kind, where, escape(text)))
-          sys.exit(1 if failed else 0)
-          ' "$findings"
+          reviewdog -f=sarif -name=ast-grep -reporter=rdjsonl -filter-mode=added -diff="git diff -M HEAD^1 HEAD" <"$sarif" |
+            reviewdog -f=rdjsonl -name=ast-grep -reporter=github-annotations -filter-mode=nofilter -fail-level=error
