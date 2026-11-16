@@ -37,7 +37,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 2
 
       - name: Checkout the ast-grep rules
         if: github.event_name == 'pull_request'
@@ -55,7 +54,7 @@ jobs:
       # ast-grep writes SARIF, which reviewdog parses natively. reviewdog fetches the diff of the pull request with
       # the token and reports the findings on added or modified lines as annotations (`-filter-mode=added`); it fails
       # the job on `error`.
-      - name: Scan changed lines
+      - name: Report findings on changed lines
         if: github.event_name == 'pull_request'
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ github.token }}
@@ -63,15 +62,9 @@ jobs:
           ast_grep() { nix run --inputs-from "github:furedea/agent-config/$AGENT_CONFIG_REF" nixpkgs#ast-grep -- "$@"; }
           reviewdog() { nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#reviewdog" -- "$@"; }
 
-          mapfile -d '' changed < <(git diff -z --name-only -M --diff-filter=ACMR HEAD^1 HEAD)
-          if ((${#changed[@]} == 0)); then
-            echo "No added or modified files."
-            exit 0
-          fi
-
           sarif="$(mktemp)"
           status=0
-          ast_grep scan --config "$RULES_DIR/agents/hooks/lint/sgconfig.yml" --format sarif -- "${changed[@]}" >"$sarif" || status=$?
+          ast_grep scan --config "$RULES_DIR/agents/hooks/lint/sgconfig.yml" --format sarif >"$sarif" || status=$?
           # ast-grep exits 1 for error-level findings and for a broken configuration alike, and writes SARIF only
           # when it scanned, so no output means that nothing was scanned.
           if ((status > 1)) || [[ ! -s $sarif ]]; then

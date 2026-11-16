@@ -58,12 +58,13 @@ copies the rules. Model-judged rules (jev-lint) are not run: they need API keys 
 
 - **When it scans.** Only on `pull_request` events. In every other case the job succeeds without scanning, so callers
   need no `if`. There is no baseline file and no scan of the whole tree.
-- **Which findings count.** The scan covers the added and modified files of the pull request, and
+- **Which findings count.** ast-grep scans the whole checkout, and
   [reviewdog](https://github.com/reviewdog/reviewdog) keeps the findings on added or modified lines
-  (`-filter-mode=added`) of the diff of the pull request, which reviewdog fetches from the API; a pure rename changes
-  no line. The files to scan are those of `git diff HEAD^1 HEAD`, `HEAD` being the merge commit. reviewdog compares the start line
-  of a finding, so a finding on a function counts when its first line changed. Violations that already exist in
-  untouched lines are neither reported nor gating, so the first run in a repository does not fail on old code.
+  (`-filter-mode=added`) of the diff of the pull request, which it fetches from the API; a pure rename changes no
+  line. The checkout of agent-config's rules, inside the workspace, is scanned too, and its findings are dropped
+  because they are outside the diff. reviewdog compares the start line of a finding, so a finding on a function counts
+  when its first line changed. Violations that already exist in untouched lines are neither reported nor gating, so
+  the first run in a repository does not fail on old code.
 - **What fails the job.** A finding with `severity: error`, the level that ADR-0021 lets block (a rule judges one
   local construct, and "a rule is either enabled as `error` or deleted"; the revision in furedea/agent-config#203).
   Findings of any other severity are annotations and do not fail the job. ast-grep's SARIF output carries the
@@ -97,9 +98,7 @@ The scan is `ast-grep scan --format sarif | reviewdog -f=sarif -reporter=github-
 with the job's `github.token` (`REVIEWDOG_GITHUB_API_TOKEN`), which is why the job needs `pull-requests: read` besides
 `contents: read`. The caller must grant both.
 
-`ci.yml` tests it twice: it calls the workflow on this repository's own pull requests, and the `ast-grep-fixture` job
-runs the workflow's scan step on a small repository, with reviewdog's local reporter and `-diff` because there is no pull request to fetch, to check that an error in changed lines fails, that an old
-violation in a touched file is ignored, and that a warning only annotates.
+`ci.yml` calls the workflow on this repository's own pull requests; that run is its test.
 
 ## claude-review.yml
 
