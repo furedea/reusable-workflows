@@ -58,6 +58,12 @@ jobs:
       - name: Check that Nix works
         run: nix --version
 
+  ast-grep:
+    uses: ./.github/workflows/ast-grep.yml # zizmor: ignore[self-repository]
+    permissions:
+      contents: read
+      pull-requests: read
+
   claude-review:
     uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]
     permissions:
@@ -80,6 +86,7 @@ jobs:
       - nix-lint
       - nix-check
       - nix-setup
+      - ast-grep
       - claude-review
       - codex-review
     runs-on: ubuntu-24.04

@@ -6,6 +6,7 @@ Reusable GitHub Actions workflows (`on: workflow_call`) shared by furedea reposi
 
 Shared workflows, called from the `ci.yml` of other repositories (each has a section below):
 
+- `ast-grep.yml`
 - `claude-review.yml`
 - `codex-review.yml`
 - `gha-lint.yml`
@@ -47,6 +48,57 @@ GitHub App, so that the release PR triggers CI; a PR opened with `GITHUB_TOKEN` 
 Contents, Issues and Pull requests permissions (read and write) and must be installed on this repository, which
 needs the variable `RELEASE_APP_CLIENT_ID` (the App's Client ID) and the secret `RELEASE_APP_PRIVATE_KEY`. The workflow mints a token for
 this repository only with `actions/create-github-app-token`.
+
+## ast-grep.yml
+
+Runs the ast-grep rules of [furedea/agent-config](https://github.com/furedea/agent-config)
+(`agents/hooks/lint/sgconfig.yml`) against the files that a pull request changes. The rules stay in agent-config, the
+single source of truth of each rule (ADR-0021 there); the workflow checks agent-config out at a pinned commit and never
+copies the rules. Model-judged rules (jev-lint) are not run: they need API keys and stay advisory (ADR-0020).
+
+- **When it scans.** Only on `pull_request` events. In every other case the job succeeds without scanning, so callers
+  need no `if`. There is no baseline file and no scan of the whole tree.
+- **Which findings count.** ast-grep scans the whole checkout, and
+  [reviewdog](https://github.com/reviewdog/reviewdog) keeps the findings on added or modified lines
+  (`-filter-mode=added`) of the diff of the pull request, which it fetches from the API; a pure rename changes no
+  line. The checkout of agent-config's rules, inside the workspace, is scanned too, and its findings are dropped
+  because they are outside the diff. reviewdog compares the start line of a finding, so a finding on a function counts
+  when its first line changed. Violations that already exist in untouched lines are neither reported nor gating, so
+  the first run in a repository does not fail on old code.
+- **What fails the job.** A finding with `severity: error`, the level that ADR-0021 lets block (a rule judges one
+  local construct, and "a rule is either enabled as `error` or deleted"; the revision in furedea/agent-config#203).
+  Findings of any other severity are annotations and do not fail the job. ast-grep's SARIF output carries the
+  rule's `message` but not its `note`.
+- **Not run.** A repository's own `sgconfig.yml` is not read; only the shared rules apply.
+
+| Input              | Default                       | Meaning                                              |
+| ------------------ | ----------------------------- | ---------------------------------------------------- |
+| `agent-config-ref` | a full SHA of agent-config    | Commit of agent-config whose rules are applied       |
+
+```yaml
+jobs:
+    ast-grep:
+        uses: furedea/reusable-workflows/.github/workflows/ast-grep.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+            pull-requests: read
+```
+
+Add `ast-grep` to `all-green`'s `needs`. Renovate moves the default `agent-config-ref` (`customManagers`), so a new
+release of this repository carries new rules; pass `agent-config-ref` to pin a different commit.
+
+ast-grep is not pinned in this workflow: it is installed with
+`nix run --inputs-from github:furedea/agent-config/<agent-config-ref> nixpkgs#ast-grep`, which resolves nixpkgs from
+agent-config's `flake.lock` at that commit, so `agent-config-ref` is the only pin and CI runs the ast-grep that the
+agent hooks run. reviewdog comes from the `NIXPKGS_REV` of the workflow, the nixpkgs revision that `nix-lint.yml` and
+`gha-lint.yml` use; Renovate moves the revision in the three files together.
+
+The scan is `ast-grep scan --format sarif | reviewdog -f=sarif -reporter=github-pr-annotations -filter-mode=added
+-fail-level=error`, the way reviewdog documents its use in GitHub Actions: it fetches the diff of the pull request
+with the job's `github.token` (`REVIEWDOG_GITHUB_API_TOKEN`), which is why the job needs `pull-requests: read` besides
+`contents: read`. The caller must grant both.
+
+`ci.yml` calls the workflow on this repository's own pull requests; that run is its test.
 
 ## claude-review.yml
 
@@ -337,11 +389,11 @@ caller's repository, and a pinned `furedea/reusable-workflows/...@<sha>` cannot 
 Every tool these workflows run is pinned so that its content cannot change, not only its version string.
 Renovate updates each pin through the `customManagers` in `renovate.json`:
 
-- `nix-lint.yml` and `gha-lint.yml`: one nixpkgs revision in the job env `NIXPKGS_REV` (the same value in both
-  files). It provides nixfmt, statix, deadnix and actionlint, and a nixpkgs revision fixes every input by hash.
+- `nix-lint.yml`, `gha-lint.yml` and `ast-grep.yml` (reviewdog only): one nixpkgs revision in the job env
+  `NIXPKGS_REV` (the same value in all three files). It provides nixfmt, statix, deadnix and actionlint, and a nixpkgs revision fixes every input by hash.
   The nixpkgs actionlint bundles shellcheck and pyflakes. It is run with `nix run` from this revision instead of
   a release asset download, because a release asset is not checksum-verified and can be replaced. Renovate moves
-  the revision in both files to the head of `nixos-unstable` in one pull request.
+  the revision in all three files to the head of `nixos-unstable` in one pull request.
 - `gha-lint.yml`: zizmor `version: 1.32.0`. The pinned SHA of `zizmor-action` carries a lockfile with hashes, so
   this version fixes the content of zizmor as well.
 - Nix and the Claude CLI are pinned by the SHA of the action that installs them (`install-nix-action` v31.11.3
