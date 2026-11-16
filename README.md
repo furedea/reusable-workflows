@@ -51,7 +51,9 @@ this repository only with `actions/create-github-app-token`.
 ## claude-review.yml
 
 Reviews every same-repository pull request with Claude Code. It posts P0 to P3 findings as inline comments
-and a summary comment, and fails when there is at least one P0 or P1 finding. Fork pull requests are skipped
+and a summary comment. Findings do not fail the job; they stay as unresolved review threads, and the ruleset's
+`required_review_thread_resolution` blocks the merge until they are resolved. The calling repository must set it
+to `true`. The job fails only when the review itself fails (for example an expired token). Fork pull requests are skipped
 because secrets are not passed to them. Pull requests opened by bots other than `furedea-agent` (for example
 Renovate) are not reviewed, because the action rejects other bots. The workflow itself skips these cases, and
 runs only for `pull_request` events, so callers need no `if`.
