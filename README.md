@@ -51,7 +51,9 @@ this repository only with `actions/create-github-app-token`.
 ## claude-review.yml
 
 Reviews every same-repository pull request with Claude Code. It posts P0 to P3 findings as inline comments
-and a summary comment, and fails when there is at least one P0 or P1 finding. Fork pull requests are skipped
+and a summary comment. Findings do not fail the job; they stay as unresolved review threads, and the ruleset's
+`required_review_thread_resolution` blocks the merge until they are resolved. The calling repository must set it
+to `true`. The job fails only when the review itself fails (for example an expired token). Fork pull requests are skipped
 because secrets are not passed to them. Pull requests opened by bots other than `furedea-agent` (for example
 Renovate) are not reviewed, because the action rejects other bots. The workflow itself skips these cases, and
 runs only for `pull_request` events, so callers need no `if`.
@@ -87,10 +89,13 @@ The caller needs the repository secret `CLAUDE_CODE_OAUTH_TOKEN`.
 Asks the Codex GitHub connector to review every same-repository pull request, on open and on every push, and
 waits for its result. Codex ignores review requests from bots and charges repository-wide automatic reviews to
 credits, so the workflow posts `@codex review` with the repository owner's token; the review then runs on the
-owner's ChatGPT plan. The job reads the `codex-review-state` that Codex records in its summary comment and
-fails when the review of the head commit has unresolved findings, when Codex reports a failure (for example
-usage limits), or when no review arrives within 20 minutes. It skips the same pull requests as
-`claude-review.yml`.
+owner's ChatGPT plan. The job reads the `codex-review-state` that Codex records in its summary comment. It
+succeeds once Codex has completed the review of the head commit, whether or not it left findings, and fails when
+Codex reports a failure (for example usage limits), when no review arrives within 20 minutes, or when the request
+fails. It skips the same pull requests as `claude-review.yml`.
+
+Findings stay as unresolved review threads, and the ruleset's `required_review_thread_resolution` blocks the
+merge until they are resolved. The calling repository must set it to `true`.
 
 ```yaml
 jobs:
