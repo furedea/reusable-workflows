@@ -84,9 +84,13 @@ jobs:
 ```
 
 Add `ast-grep` to `all-green`'s `needs`. Renovate moves the default `agent-config-ref` (`customManagers`), so a new
-release of this repository carries new rules; pass `agent-config-ref` to pin a different commit. ast-grep 0.42.1 and
-reviewdog 0.21.0 come from the nixpkgs revision `NIXPKGS_REV` in the workflow, the revision of agent-config's
-`flake.lock`; update it together with agent-config's lock file, not with the nixpkgs pin of `nix-lint.yml`.
+release of this repository carries new rules; pass `agent-config-ref` to pin a different commit.
+
+ast-grep is not pinned in this workflow: it is installed with
+`nix run --inputs-from github:furedea/agent-config/<agent-config-ref> nixpkgs#ast-grep`, which resolves nixpkgs from
+agent-config's `flake.lock` at that commit, so `agent-config-ref` is the only pin and CI runs the ast-grep that the
+agent hooks run. reviewdog comes from the `NIXPKGS_REV` of the workflow, the nixpkgs revision that `nix-lint.yml` and
+`gha-lint.yml` use; Renovate moves the revision in the three files together.
 
 The scan is `ast-grep scan --format sarif | reviewdog -f=sarif -reporter=github-pr-annotations -filter-mode=added
 -fail-level=error`, the way reviewdog documents its use in GitHub Actions: it fetches the diff of the pull request
@@ -381,11 +385,11 @@ caller's repository, and a pinned `furedea/reusable-workflows/...@<sha>` cannot 
 Every tool these workflows run is pinned so that its content cannot change, not only its version string.
 Renovate updates each pin through the `customManagers` in `renovate.json`:
 
-- `nix-lint.yml` and `gha-lint.yml`: one nixpkgs revision in the job env `NIXPKGS_REV` (the same value in both
-  files). It provides nixfmt, statix, deadnix and actionlint, and a nixpkgs revision fixes every input by hash.
+- `nix-lint.yml`, `gha-lint.yml` and `ast-grep.yml` (reviewdog only): one nixpkgs revision in the job env
+  `NIXPKGS_REV` (the same value in all three files). It provides nixfmt, statix, deadnix and actionlint, and a nixpkgs revision fixes every input by hash.
   The nixpkgs actionlint bundles shellcheck and pyflakes. It is run with `nix run` from this revision instead of
   a release asset download, because a release asset is not checksum-verified and can be replaced. Renovate moves
-  the revision in both files to the head of `nixos-unstable` in one pull request.
+  the revision in all three files to the head of `nixos-unstable` in one pull request.
 - `gha-lint.yml`: zizmor `version: 1.32.0`. The pinned SHA of `zizmor-action` carries a lockfile with hashes, so
   this version fixes the content of zizmor as well.
 - Nix and the Claude CLI are pinned by the SHA of the action that installs them (`install-nix-action` v31.11.3

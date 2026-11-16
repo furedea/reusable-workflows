@@ -94,11 +94,13 @@ jobs:
         uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
 
       - name: Check the findings of a fixture pull request
+        env:
+          AGENT_CONFIG_REF: ${{ steps.rules.outputs.ref }}
         run: |
           workflow=.github/workflows/ast-grep.yml
           NIXPKGS_REV="$(yq '.jobs.ast-grep.env.NIXPKGS_REV' "$workflow")"
           RULES_DIR="$PWD/agent-config-rules"
-          export NIXPKGS_REV RULES_DIR
+          export NIXPKGS_REV RULES_DIR AGENT_CONFIG_REF
           yq '.jobs.ast-grep.steps[] | select(.name == "Scan changed lines") | .run' "$workflow" > "$RUNNER_TEMP/scan.sh"
           grep -q -- '-reporter=github-pr-annotations' "$RUNNER_TEMP/scan.sh"
           sed -i 's/-reporter=github-pr-annotations/-reporter=local -diff="git diff -M HEAD^1 HEAD"/' "$RUNNER_TEMP/scan.sh"
