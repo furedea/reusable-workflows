@@ -5,6 +5,14 @@
 readonly ACTION=.github/actions/adr-front-matter
 readonly FIXTURES=tests/adr-lint/fixtures
 
+# The scripts need yq (mikefarah, v4). Outside the dev shell, fetch it from nixpkgs instead of failing.
+setup_file() {
+  command -v yq >/dev/null && return 0
+  local _yq_out
+  _yq_out=$(nix build --no-link --print-out-paths 'nixpkgs#yq-go')
+  export PATH="$_yq_out/bin:$PATH"
+}
+
 assert_rejected() {
   run "$ACTION/check_front_matter.sh" "$FIXTURES/$1"
   [ "$status" -eq 1 ]
