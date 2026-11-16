@@ -1,9 +1,5 @@
 name: Codex review (reusable)
 
-# Call it from `pull_request` (opened, synchronize, reopened) and from
-# `pull_request_review_comment` (created). The review job asks Codex to review and waits for it.
-# The gate job reports the commit status `codex-review/gate` on the pull request head from the
-# review threads that Codex wrote, so resolving a thread turns the status green without a new review.
 on:
   workflow_call:
     secrets:
@@ -20,12 +16,8 @@ defaults:
     shell: bash
 
 concurrency:
-  group: codex-review-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && 'review' || 'gate' }}
+  group: codex-review-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
-env:
-  STATUS_CONTEXT: codex-review/gate
-  CODEX_LOGIN: chatgpt-codex-connector
 
 jobs:
   should-review:
@@ -37,7 +29,7 @@ jobs:
     # This job always succeeds so the caller job is never reported as skipped.
     outputs:
       run: >-
-        ${{ (github.event_name == 'pull_request' || (github.event_name == 'pull_request_review_comment' && github.event.action == 'created'))
+        ${{ github.event_name == 'pull_request'
         && github.event.pull_request.head.repo.full_name == github.repository
         && (github.event.pull_request.user.type != 'Bot'
         || github.event.pull_request.user.login == 'furedea-agent[bot]') }}
@@ -45,73 +37,32 @@ jobs:
       - name: No-op
         run: "true"
 
-  # A pull request that is skipped on purpose (for example a Renovate PR) has no gate, so a required
-  # codex-review/gate would wait forever. Report success for it. Fork pull requests get a read-only
-  # token and cannot be reported; do not require the gate where forks are accepted.
-  skip:
-    name: Report that no review is required
-    needs: should-review
-    if: >-
-      !cancelled() && needs.should-review.outputs.run != 'true'
-      && github.event_name == 'pull_request'
-      && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-24.04
-    timeout-minutes: 1
-    permissions:
-      statuses: write
-    steps:
-      - name: Post a success status
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          gh api "repos/$REPO/statuses/$HEAD_SHA" -f state=success -f context="$STATUS_CONTEXT" \
-            -f description="Codex review not required for this pull request" -f target_url="$RUN_URL" >/dev/null
-
-  # Requests the review and waits until Codex has reviewed the head commit. It never decides
-  # pass or fail; the gate does.
   review:
     name: Codex review
     needs: should-review
-    if: needs.should-review.outputs.run == 'true' && github.event_name == 'pull_request'
+    if: needs.should-review.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    # The caller must grant statuses: write for the pending status.
-    permissions:
-      statuses: write
-    outputs:
-      status: ${{ steps.wait.outputs.status }}
+    permissions: {}
     env:
+      GH_TOKEN: ${{ secrets.codex_review_token }}
       REPO: ${{ github.repository }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - name: Mark the head commit as pending
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          gh api "repos/$REPO/statuses/$HEAD_SHA" -f state=pending -f context="$STATUS_CONTEXT" \
-            -f description="Waiting for Codex to review ${HEAD_SHA:0:7}" -f target_url="$RUN_URL" >/dev/null
-
       - name: Request a review
         id: request
-        env:
-          GH_TOKEN: ${{ secrets.codex_review_token }}
         run: |
           echo "requested_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$GITHUB_OUTPUT"
           gh pr comment "$PR_NUMBER" --repo "$REPO" --body "@codex review"
 
       # Codex keeps one summary comment per pull request and records its state in
       # <!-- codex-review-state:v1 {...} -->. Wait until that comment is updated after this
-      # request (so a re-run never reads an old state) and its state is for HEAD_SHA.
+      # request (so a re-run never reads an old verdict) and its state is for HEAD_SHA.
       # A failed API call is retried on the next poll instead of ending the wait.
       - name: Wait for the review of the head commit
         id: wait
         env:
-          GH_TOKEN: ${{ secrets.codex_review_token }}
           REQUESTED_AT: ${{ steps.request.outputs.requested_at }}
         run: |
           deadline=$((SECONDS + 20 * 60))
@@ -129,102 +80,20 @@ jobs:
           done
           echo "status=timeout" >>"$GITHUB_OUTPUT"
 
-  # Decides from the current review threads that Codex wrote and reports a commit status on the
-  # pull request head. Review-comment events run on the default branch's SHA, so the status is
-  # posted to the head SHA that the API returns, not to github.sha.
-  gate:
-    name: Codex gate
-    needs: [should-review, review]
-    if: ${{ !cancelled() && needs.should-review.outputs.run == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      pull-requests: read
-      statuses: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      EVENT_NAME: ${{ github.event_name }}
-      REVIEW_RESULT: ${{ needs.review.result }}
-      REVIEW_STATUS: ${{ needs.review.outputs.status }}
-    steps:
-      - name: Report the commit status
+      # Findings do not fail the job: they stay as unresolved review threads, and the ruleset's
+      # required_review_thread_resolution blocks the merge until they are resolved.
+      - name: Fail unless Codex reviewed the head commit
+        if: always()
+        env:
+          STATUS: ${{ steps.wait.outputs.status }}
         run: |
-          HEAD_SHA="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)"
-          short="${HEAD_SHA:0:7}"
-
-          report() {
-            gh api "repos/$REPO/statuses/$HEAD_SHA" -f state="$1" -f context="$STATUS_CONTEXT" \
-              -f description="$2" -f target_url="$RUN_URL" >/dev/null
-          }
-          finish() {
-            report "$1" "$2"
-            echo "$2" >>"$GITHUB_STEP_SUMMARY"
-            [[ "$1" != error ]] || exit 1
-            exit 0
-          }
-          trap 'report error "The Codex gate could not read the review state"' ERR
-
-          # The state counts only when the summary was updated after the latest "@codex review"
-          # request from a trusted author (anyone else could move the request time and hold the gate), so a rerun or reopen on the same head SHA stays pending until its fresh result.
-          codex_state_field() {
-            local comments requested_at
-            comments="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate --jq '.[]')" || return 1
-            requested_at="$(jq -rs '[.[] | select(.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")) | select((.body | gsub("\\s+$"; "") | ascii_downcase) == "@codex review") | .created_at] | max // ""' <<<"$comments")" || return 1
-            jq -r --arg req "$requested_at" \
-              'select(.user.login == "chatgpt-codex-connector[bot]" and .updated_at >= $req) | .body' <<<"$comments" \
-              | sed -n 's/.*<!-- codex-review-state:v1 \(.*\) -->.*/\1/p' | tail -n 1 \
-              | jq -r --arg sha "$HEAD_SHA" '.code_review | select(.commit_sha == $sha) | .status // empty'
-          }
-
-          case "$REVIEW_RESULT:$REVIEW_STATUS" in
-            failure:* | cancelled:*) finish failure "The Codex review request failed. Check the token (repo review-token rotate)." ;;
-            success:timeout) finish failure "Codex did not review $short within 20 minutes." ;;
+          case "$STATUS" in
+            completed) echo "Codex reviewed $HEAD_SHA. Findings, if any, remain as unresolved review threads." >>"$GITHUB_STEP_SUMMARY" ;;
+            failed) message="Codex could not review $HEAD_SHA (for example, usage limits). Read its summary comment on the pull request." ;;
+            *) message="Codex did not review $HEAD_SHA within 20 minutes. Check the Codex connector settings and that the token is valid (\`repo review-token rotate\`)." ;;
           esac
-
-          # A plain assignment, and the function returns on a failed call (errexit is off inside a command
-          # substitution), so the failure reaches the ERR trap instead of reading as "not reviewed yet".
-          codex_status="$(codex_state_field)"
-          case "$codex_status" in
-            completed) ;;
-            failed) finish failure "Codex could not review $short (for example, usage limits)." ;;
-            *) finish pending "Waiting for Codex to review $short" ;;
-          esac
-
-          # shellcheck disable=SC2016 # the GraphQL variables are not shell variables
-          count_unresolved() {
-            gh api graphql --paginate \
-              -F owner="${REPO%%/*}" -F name="${REPO##*/}" -F number="$PR_NUMBER" \
-              -f query='query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
-                repository(owner: $owner, name: $name) {
-                  pullRequest(number: $number) {
-                    reviewThreads(first: 100, after: $endCursor) {
-                      nodes { isResolved comments(first: 1) { nodes { author { login } } } }
-                      pageInfo { hasNextPage endCursor }
-                    }
-                  }
-                }
-              }' \
-              --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-                | select(.isResolved | not)
-                | select(.comments.nodes[0].author.login | IN(env.CODEX_LOGIN, env.CODEX_LOGIN + "[bot]"))
-                | 1' | wc -l | tr -d ' '
-          }
-
-          # A reply is followed by the resolve, which can arrive late. On a reply, recount for up to
-          # a minute and stop as soon as no thread is left.
-          unresolved="$(count_unresolved)"
-          if [[ "$EVENT_NAME" == pull_request_review_comment ]]; then
-            for _ in 1 2 3 4 5 6; do
-              [[ "$unresolved" != 0 ]] || break
-              sleep 10
-              unresolved="$(count_unresolved)"
-            done
+          if [[ -n "${message:-}" ]]; then
+            echo "$message" >>"$GITHUB_STEP_SUMMARY"
+            echo "::error::$message"
+            exit 1
           fi
-
-          if [[ "$unresolved" == 0 ]]; then
-            finish success "No unresolved Codex threads on $short"
-          fi
-          finish failure "$unresolved unresolved Codex thread(s) on $short. Fix, then reply and resolve."

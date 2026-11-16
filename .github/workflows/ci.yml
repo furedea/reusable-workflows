@@ -68,9 +68,7 @@ jobs:
 
   codex-review:
     uses: ./.github/workflows/codex-review.yml # zizmor: ignore[self-repository]
-    permissions:
-      pull-requests: read
-      statuses: write
+    permissions: {}
     secrets:
       codex_review_token: ${{ secrets.CODEX_REVIEW_TOKEN }}
 

@@ -87,73 +87,26 @@ The caller needs the repository secret `CLAUDE_CODE_OAUTH_TOKEN`.
 Asks the Codex GitHub connector to review every same-repository pull request, on open and on every push, and
 waits for its result. Codex ignores review requests from bots and charges repository-wide automatic reviews to
 credits, so the workflow posts `@codex review` with the repository owner's token; the review then runs on the
-owner's ChatGPT plan. It skips the same pull requests as `claude-review.yml`.
+owner's ChatGPT plan. The job reads the `codex-review-state` that Codex records in its summary comment. It
+succeeds once Codex has completed the review of the head commit, whether or not it left findings, and fails when
+Codex reports a failure (for example usage limits), when no review arrives within 20 minutes, or when the request
+fails. It skips the same pull requests as `claude-review.yml`.
 
-Two jobs split the work:
-
-- `review` (on `pull_request`) posts `@codex review`, sets the commit status `codex-review/gate` to pending on
-  the head SHA, and waits up to 20 minutes until Codex has reviewed the head commit. It does not decide pass or
-  fail.
-- `gate` counts the unresolved review threads that `chatgpt-codex-connector` wrote (GraphQL `reviewThreads`) and
-  reports `codex-review/gate` on the pull request head SHA: pending while Codex has not reviewed the head,
-  failure when Codex failed (for example usage limits), timed out, or left unresolved threads, success
-  otherwise. On `pull_request_review_comment` it recounts for up to a minute while threads remain, because the resolve follows the reply.
-
-Resolving a thread therefore turns the status green without re-running the review. Reply to a thread before
-resolving it: the reply is what triggers the gate. Resolving a thread raises the `pull_request_review_thread` webhook, but that is not a workflow trigger in GitHub
-Actions (`actionlint` rejects it too), so a resolve alone starts no run. A resolve more than a minute after the
-reply, or without a reply, leaves the status as it was; re-run the gate
-run of the pull request to refresh the status.
-
-The gate treats the Codex summary as current only when it was updated after the latest `@codex review` request
-on the pull request, so a rerun or reopen on the same head stays pending until its fresh result.
-
-Pull requests that are skipped on purpose (opened by a bot other than `furedea-agent[bot]`) get a `success`
-status, "Codex review not required", so the required check never waits. Fork pull requests get a read-only token
-and no status, so do not require the gate in a repository that accepts them.
+Findings stay as unresolved review threads, and the ruleset's `required_review_thread_resolution` blocks the
+merge until they are resolved. The calling repository must set it to `true`.
 
 ```yaml
-# .github/workflows/ci.yml
 jobs:
     codex-review:
         uses: furedea/reusable-workflows/.github/workflows/codex-review.yml@<full-commit-sha> # <ref>
-        permissions:
-            pull-requests: read
-            statuses: write
+        permissions: {}
         secrets:
             codex_review_token: ${{ secrets.CODEX_REVIEW_TOKEN }}
 ```
 
-```yaml
-# .github/workflows/codex-review-comment.yml
-on:
-    pull_request_review_comment:
-        types: [created]
-permissions: {}
-jobs:
-    codex-review:
-        uses: furedea/reusable-workflows/.github/workflows/codex-review.yml@<full-commit-sha> # <ref>
-        permissions:
-            pull-requests: read
-            statuses: write
-        secrets:
-            codex_review_token: ${{ secrets.CODEX_REVIEW_TOKEN }}
-```
-
-The caller needs the repository secret `CODEX_REVIEW_TOKEN`: a fine-grained token of the owner with only Pull
-requests read and write. In the Codex settings, keep the repository's automatic review on "Follow personal
-preferences".
-
-### Switching the required check to the gate
-
-The inputs and secrets are unchanged, but the caller job no longer fails on findings and its permissions must
-now include `pull-requests: read` and `statuses: write`. To switch a caller:
-
-1. Update the pinned SHA, grant the permissions above, and add the `pull_request_review_comment` workflow.
-2. After the first pull request run, make `codex-review/gate` a required status check in the branch protection
-   or ruleset (Settings > Rules > Require status checks).
-3. Remove `codex-review / Codex review` from the required checks. `codex-review` can stay in `all-green`'s `needs`
-   (it only fails when the request itself fails).
+Add `codex-review` to `all-green`'s `needs`. The caller needs the repository secret `CODEX_REVIEW_TOKEN`: a
+fine-grained token of the owner with only Pull requests read and write. In the Codex settings, keep the
+repository's automatic review on "Follow personal preferences".
 
 ## gha-lint.yml
 
