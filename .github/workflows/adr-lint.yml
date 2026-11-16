@@ -1,0 +1,78 @@
+name: ADR lint (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      adr-dir:
+        description: Directory of the MADR ADRs, relative to the repository root
+        required: false
+        type: string
+        default: docs/adr
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  adr-lint:
+    name: adr-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      # Same nixpkgs revision as nix-lint.yml and gha-lint.yml; Renovate updates all of them together.
+      NIXPKGS_REV: f9a75f41be3a74eab55d3a7679d34ad6cc0da977
+      ADR_DIR: ${{ inputs.adr-dir }}
+      BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+    steps:
+      # The full history gives the pull request's base commit to the accepted-body check.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # A reusable workflow resolves ./.github/actions in the caller's repository, so the composite
+      # action and the markdownlint base settings come from this repository at the called commit.
+      - name: Checkout the shared ADR checks
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .reusable-workflows
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - name: Put yq on PATH
+        run: echo "$(nix build --no-link --print-out-paths "github:NixOS/nixpkgs/$NIXPKGS_REV#yq-go")/bin" >> "$GITHUB_PATH"
+
+      # markdownlint-cli2 applies the nearest .markdownlint.yml of a directory instead of merging it with
+      # a base config, so the merged settings replace the file inside this job's workspace.
+      - name: Merge the markdownlint settings
+        run: |
+          base=.reusable-workflows/.github/adr-lint/markdownlint.yml
+          caller="$ADR_DIR/.markdownlint.yml"
+          if [[ -f $caller ]]; then
+            # shellcheck disable=SC2016 # the $item is yq's variable
+            yq eval-all '. as $item ireduce ({}; . * $item)' "$base" "$caller" > "$RUNNER_TEMP/markdownlint.yml"
+          else
+            cp "$base" "$RUNNER_TEMP/markdownlint.yml"
+          fi
+          cp "$RUNNER_TEMP/markdownlint.yml" "$caller"
+
+      - name: Run markdownlint
+        run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#markdownlint-cli2" -- "$ADR_DIR/**/*.md"
+
+      - name: Run lychee
+        run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#lychee" -- --offline --no-progress "$ADR_DIR"
+
+      - name: Check the ADR front matter
+        uses: ./.reusable-workflows/.github/actions/adr-front-matter # zizmor: ignore[self-repository]
+        with:
+          adr-dir: ${{ inputs.adr-dir }}
+          base-sha: ${{ env.BASE_SHA }}

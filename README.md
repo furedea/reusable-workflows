@@ -12,10 +12,12 @@ Shared workflows, called from the `ci.yml` of other repositories (each has a sec
 - `dependency-review.yml`
 - `nix-lint.yml`
 - `nix-check.yml`
+- `adr-lint.yml`
 - `release-pr.yml`
 - `release-publish.yml`
 
-A composite action, called as a step: `.github/actions/nix-setup` (see "nix-setup (composite action)" below).
+Composite actions, called as a step: `.github/actions/nix-setup` (see "nix-setup (composite action)" below) and
+`.github/actions/adr-front-matter` (used by `adr-lint.yml`; see its section).
 
 Workflows for this repository only, not meant to be called from elsewhere:
 
@@ -167,6 +169,61 @@ jobs:
 ```
 
 Add `nix-check` to `all-green`'s `needs`.
+
+## adr-lint.yml
+
+Checks the MADR ADRs of the calling repository, whose shape is fixed by furedea/agent-config ADR-0025. The
+checks run in this order, and the job fails at the first one that fails:
+
+1. markdownlint-cli2 over `<adr-dir>/**/*.md` only. The base settings are the MADR project's own (`MD013` and
+   `MD024` off, the rest default). markdownlint applies a directory's config instead of merging it with a base, so the
+   job merges the caller's `<adr-dir>/.markdownlint.yml` over the base in its own workspace (the caller carries `MD043` for
+   the heading structure there).
+2. `lychee --offline` over `<adr-dir>`: links between ADRs.
+3. The `adr-front-matter` action reads each `NNNN_*.md` file's front matter with `yq` and rejects:
+   - front matter that is missing, not a YAML mapping, has a key outside `status`, `date`, `supersedes`,
+     `superseded-by`, `partly-superseded-by`, `amended`, `related`, `decision-makers`, `consulted`, `informed`, lacks
+     `status` or `date`, or has a value of the wrong type (`date` is `YYYY-MM-DD`, the reference keys are non-empty
+     lists of `ADR-NNNN` or `<repository>/ADR-NNNN`, `amended` is a list of `"YYYY-MM-DD: what changed"`);
+   - a `status` outside `proposed`, `accepted`, `rejected`, `deprecated`, `superseded`;
+   - duplicate IDs (the ID is the `NNNN` file-name prefix);
+   - a reference `ADR-NNNN` that does not exist (an ID with a repository prefix, such as `dotfiles/ADR-0016`, is not
+     resolved);
+   - `superseded-by` present unless the status is `superseded`, and the reverse;
+   - `supersedes: [X]` in one ADR when X's `superseded-by` or `partly-superseded-by` does not name it, and the
+     reverse.
+4. On pull requests only: the body (everything after the front matter) of an ADR whose version at the base commit has
+   `status: accepted` must not change. Front-matter changes are allowed. The ADR is matched to its base version by the
+   `NNNN` prefix, so a rename does not hide a change. Write a new ADR that supersedes it instead.
+
+Anything that does not match the fixed shape is a violation; nothing is interpreted (no prose metadata, no other
+formats). A violation line never repeats file content.
+
+```yaml
+jobs:
+    adr-lint:
+        uses: furedea/reusable-workflows/.github/workflows/adr-lint.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+        with:
+            adr-dir: docs/adr # optional
+```
+
+| Input     | Default    | Meaning                                              |
+| --------- | ---------- | ---------------------------------------------------- |
+| `adr-dir` | `docs/adr` | Directory of the ADRs, relative to the repository root |
+
+Add `adr-lint` to `all-green`'s `needs`. The workflow checks out this repository at the called commit
+(`job.workflow_sha`) into `.reusable-workflows` of the job's workspace to run the action, because a reusable
+workflow resolves `./.github/actions/...` in the caller's repository. actionlint 1.7.12 does not know the
+`job.workflow_*` properties yet, so `.github/actionlint.yaml` ignores those two errors for this file.
+
+The action can also be used as a step on its own (`yq` v4 and git on `PATH`; `base-sha` needs the full history):
+`furedea/reusable-workflows/.github/actions/adr-front-matter@<full-commit-sha>` with inputs `adr-dir` and `base-sha`.
+
+The scripts are tested by `tests/adr_front_matter.bats` against the fixtures in `tests/adr-lint/fixtures` (one
+conforming directory and one directory per violation) and, for the accepted-body check, against temporary git
+repositories. `ci.yml` runs the tests and also calls `adr-lint.yml` on the conforming fixtures.
 
 ## release-pr.yml and release-publish.yml
 
@@ -332,11 +389,12 @@ caller's repository, and a pinned `furedea/reusable-workflows/...@<sha>` cannot 
 Every tool these workflows run is pinned so that its content cannot change, not only its version string.
 Renovate updates each pin through the `customManagers` in `renovate.json`:
 
-- `nix-lint.yml` and `gha-lint.yml`: one nixpkgs revision in the job env `NIXPKGS_REV` (the same value in both
-  files). It provides nixfmt, statix, deadnix and actionlint, and a nixpkgs revision fixes every input by hash.
+- `nix-lint.yml`, `gha-lint.yml` and `adr-lint.yml` (and the `adr-front-matter-test` job of `ci.yml`): one nixpkgs
+  revision in the job env `NIXPKGS_REV` (the same value in all of them). It provides nixfmt, statix, deadnix,
+  actionlint, yq, markdownlint-cli2, lychee and bats, and a nixpkgs revision fixes every input by hash.
   The nixpkgs actionlint bundles shellcheck and pyflakes. It is run with `nix run` from this revision instead of
   a release asset download, because a release asset is not checksum-verified and can be replaced. Renovate moves
-  the revision in both files to the head of `nixos-unstable` in one pull request.
+  the revision in all files to the head of `nixos-unstable` in one pull request.
 - `gha-lint.yml`: zizmor `version: 1.32.0`. The pinned SHA of `zizmor-action` carries a lockfile with hashes, so
   this version fixes the content of zizmor as well.
 - Nix and the Claude CLI are pinned by the SHA of the action that installs them (`install-nix-action` v31.11.3

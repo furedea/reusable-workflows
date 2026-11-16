@@ -1,0 +1,32 @@
+name: ADR front matter
+description: Check the front matter of the MADR ADRs in a directory (shape, status, unique IDs, supersession) and, given a base commit, that accepted ADR bodies do not change. Needs yq (mikefarah, v4) and git on PATH, and the full history when base-sha is set.
+
+inputs:
+  adr-dir:
+    description: Directory of the ADRs, relative to the workspace.
+    default: docs/adr
+  base-sha:
+    description: Base commit of a pull request. When set, fail if the body of an ADR that is accepted there changed. Leave empty outside pull requests.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Check the front matter
+      shell: bash
+      env:
+        ADR_DIR: ${{ inputs.adr-dir }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        yq --version | grep -q 'mikefarah/yq.* version v4\.' || { echo "yq (mikefarah, v4) is required on PATH" >&2; exit 1; }
+        "$ACTION_PATH/check_front_matter.sh" "$ADR_DIR"
+
+    - name: Check that accepted ADR bodies do not change
+      if: inputs.base-sha != ''
+      shell: bash
+      env:
+        ADR_DIR: ${{ inputs.adr-dir }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        "$ACTION_PATH/check_accepted_body.sh" "$ADR_DIR" "$BASE_SHA"

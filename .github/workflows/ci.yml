@@ -58,6 +58,35 @@ jobs:
       - name: Check that Nix works
         run: nix --version
 
+  # Calls the reusable workflow on the conforming fixtures; the workflow resolves its own composite action
+  # at this commit through job.workflow_sha.
+  adr-lint:
+    uses: ./.github/workflows/adr-lint.yml # zizmor: ignore[self-repository]
+    permissions:
+      contents: read
+    with:
+      adr-dir: tests/adr-lint/fixtures/valid
+
+  # Runs the scripts of the adr-front-matter action against conforming and violating fixtures.
+  adr-front-matter-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      NIXPKGS_REV: f9a75f41be3a74eab55d3a7679d34ad6cc0da977
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - name: Run bats
+        run: nix shell "github:NixOS/nixpkgs/$NIXPKGS_REV#bats" "github:NixOS/nixpkgs/$NIXPKGS_REV#yq-go" "github:NixOS/nixpkgs/$NIXPKGS_REV#git" --command bats tests/adr_front_matter.bats
+
   claude-review:
     uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]
     permissions:
@@ -80,6 +109,8 @@ jobs:
       - nix-lint
       - nix-check
       - nix-setup
+      - adr-lint
+      - adr-front-matter-test
       - claude-review
       - codex-review
     runs-on: ubuntu-24.04

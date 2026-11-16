@@ -1,0 +1,143 @@
+#!/usr/bin/env bats
+# Tests of the adr-front-matter composite action's scripts. Run from the repository root with yq on PATH:
+#   bats tests/adr_front_matter.bats
+
+readonly ACTION=.github/actions/adr-front-matter
+readonly FIXTURES=tests/adr-lint/fixtures
+
+assert_rejected() {
+  run "$ACTION/check_front_matter.sh" "$FIXTURES/$1"
+  [ "$status" -eq 1 ]
+  [[ $output == *"$2"* ]]
+}
+
+@test "accepts conforming ADRs, including prefixed IDs of other repositories" {
+  run "$ACTION/check_front_matter.sh" "$FIXTURES/valid"
+  [ "$status" -eq 0 ]
+}
+
+@test "rejects an ADR without front matter" {
+  assert_rejected missing-front-matter "front matter missing"
+}
+
+@test "rejects an unknown key" {
+  assert_rejected unknown-key "unknown key"
+}
+
+@test "rejects a status outside the vocabulary" {
+  assert_rejected invalid-status "invalid status"
+}
+
+@test "rejects a date that is not YYYY-MM-DD" {
+  assert_rejected invalid-date "invalid date"
+}
+
+@test "rejects a missing required key" {
+  assert_rejected missing-date "missing key: date"
+}
+
+@test "rejects a reference key that is not a list" {
+  assert_rejected invalid-list "invalid related"
+}
+
+@test "rejects a reference that is not an ADR-NNNN ID" {
+  assert_rejected invalid-reference "invalid related element"
+}
+
+@test "rejects duplicate IDs" {
+  assert_rejected duplicate-id "duplicate ID 0001"
+}
+
+@test "rejects a reference to an ADR that does not exist" {
+  assert_rejected missing-target "references a missing ADR-0099"
+}
+
+@test "rejects status superseded without superseded-by" {
+  assert_rejected superseded-without-superseded-by "superseded-by is missing"
+}
+
+@test "rejects superseded-by on an ADR that is not superseded" {
+  assert_rejected superseded-by-without-status "superseded-by is present but status is not superseded"
+}
+
+@test "rejects supersedes that the superseded ADR does not name" {
+  assert_rejected supersedes-not-reciprocated "does not name it in superseded-by or partly-superseded-by"
+}
+
+@test "rejects superseded-by that the superseding ADR does not name" {
+  assert_rejected superseded-by-not-reciprocated "does not name it in supersedes"
+}
+
+@test "never repeats file content in a violation line" {
+  run "$ACTION/check_front_matter.sh" "$FIXTURES/unknown-key"
+  [[ $output != *owner* ]]
+}
+
+@test "fails when the directory has no ADR" {
+  run "$ACTION/check_front_matter.sh" "$BATS_TEST_TMPDIR"
+  [ "$status" -eq 1 ]
+  [[ $output == *"no ADR file"* ]]
+}
+
+# --- accepted ADR bodies (pull requests) ---
+
+setup_repo() {
+  cd "$BATS_TEST_TMPDIR"
+  git init -q .
+  git config user.name test
+  git config user.email test@example.com
+  git config commit.gpgsign false
+  mkdir -p docs/adr
+  printf -- '---\nstatus: %s\ndate: 2026-01-01\n---\n\n# Title\n\nBody.\n' "$1" >docs/adr/0001_decision.md
+  git add .
+  git commit -q -m base
+  BASE=$(git rev-parse HEAD)
+}
+
+check_bodies() {
+  run "$BATS_TEST_DIRNAME/../$ACTION/check_accepted_body.sh" docs/adr "$BASE"
+}
+
+@test "rejects a body change of an accepted ADR" {
+  setup_repo accepted
+  printf 'More.\n' >>docs/adr/0001_decision.md
+  check_bodies
+  [ "$status" -eq 1 ]
+  [[ $output == *"0001_decision.md"* ]]
+}
+
+@test "allows a front-matter change of an accepted ADR" {
+  setup_repo accepted
+  printf -- '---\nstatus: accepted\ndate: 2026-02-02\namended: ["2026-02-02: note"]\n---\n\n# Title\n\nBody.\n' >docs/adr/0001_decision.md
+  check_bodies
+  [ "$status" -eq 0 ]
+}
+
+@test "allows a body change of an ADR that is not accepted at the base" {
+  setup_repo proposed
+  printf 'More.\n' >>docs/adr/0001_decision.md
+  check_bodies
+  [ "$status" -eq 0 ]
+}
+
+@test "rejects a body change that comes with a rename" {
+  setup_repo accepted
+  git mv docs/adr/0001_decision.md docs/adr/0001_renamed.md
+  printf 'More.\n' >>docs/adr/0001_renamed.md
+  check_bodies
+  [ "$status" -eq 1 ]
+}
+
+@test "allows a new ADR" {
+  setup_repo accepted
+  printf -- '---\nstatus: proposed\ndate: 2026-01-01\n---\n\n# New\n' >docs/adr/0002_new.md
+  check_bodies
+  [ "$status" -eq 0 ]
+}
+
+@test "fails when the base commit is not available" {
+  setup_repo accepted
+  BASE=0000000000000000000000000000000000000000
+  check_bodies
+  [ "$status" -eq 1 ]
+}

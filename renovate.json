@@ -13,9 +13,9 @@
       "extractVersionTemplate": "^v(?<version>.+)$"
     },
     {
-      "description": "Update the nixpkgs revision of nix-lint and gha-lint to the head of nixos-unstable",
+      "description": "Update the nixpkgs revision of nix-lint, gha-lint, adr-lint and ci to the head of nixos-unstable",
       "customType": "regex",
-      "managerFilePatterns": ["/^\\.github/workflows/(?:nix-lint|gha-lint)\\.yml$/"],
+      "managerFilePatterns": ["/^\\.github/workflows/(?:nix-lint|gha-lint|adr-lint|ci)\\.yml$/"],
       "matchStrings": ["NIXPKGS_REV: (?<currentDigest>[0-9a-f]{40})"],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "nixpkgs",
