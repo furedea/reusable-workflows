@@ -232,10 +232,13 @@ Checks the MADR ADRs of the calling repository, whose shape is fixed by furedea/
 run in this order, and the job fails at the first one that fails:
 
 1. markdownlint-cli2 over `<adr-dir>/**/*.md` only. The base settings are the MADR project's own (`default: true`,
-   `MD013` and `MD024` off). markdownlint applies a directory's config instead of merging it with `--config`, so
-   the base is passed as `--config` and, when the caller has `<adr-dir>/.markdownlint.yml` (for example `MD043` for
-   the heading structure), the job merges that file over the base with yq inside its own workspace: the caller's keys win, including its own `extends`.
-   Only the name `.markdownlint.yml` is handled.
+   `MD013` and `MD024` off). markdownlint applies the nearest config (also one in a parent directory) instead of
+   merging it with `--config`, so the job places the settings in `<adr-dir>/.markdownlint.yml` inside its own
+   workspace: the base alone, or, when the caller has that file (for example `MD043` for the heading structure), the
+   caller's file made to `extends` the base, so the caller's keys win. A caller file with its own top-level `extends`
+   fails the job with a message, because the base cannot be placed under it; put `MD013: false` and `MD024: false`
+   in that file or in the config it extends. A config in a parent directory of `<adr-dir>` is not used, and only
+   the name `.markdownlint.yml` is handled.
 2. `lychee --offline` over `<adr-dir>`: links between ADRs.
 3. `adr-check`, the command of furedea/agent-config (its ADR-0026), run with `nix run` at `agent-config-ref`. It
    checks the front-matter shape against a JSON Schema and the cross-file rules (duplicate IDs, a reference to a
