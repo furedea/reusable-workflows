@@ -33,8 +33,9 @@ main() {
   echo "ADR front matter OK"
 }
 
+# The path is untrusted too (a file name may contain a newline), so control characters become "?".
 report() {
-  printf '%s: %s\n' "$1" "$2" >&2
+  printf '%s: %s\n' "${1//[^[:print:]]/?}" "$2" >&2
   violation_count=$((violation_count + 1))
 }
 
@@ -64,7 +65,7 @@ check_adr() {
 }
 
 has_delimiters() {
-  [[ $(head -n 1 "$1") == '---' ]] && tail -n +2 "$1" | grep -qx -- '---'
+  awk 'NR == 1 { if ($0 != "---") exit 1; next } $0 == "---" { found = 1; exit } END { exit !found }' "$1"
 }
 
 check_front_matter_shape() {
@@ -99,8 +100,9 @@ check_front_matter_shape() {
   return 0
 }
 
+# True when the key is present, even with a null value, which the shape checks then reject.
 has_key() {
-  [[ $(front_matter_raw ".[\"$2\"] | tag" "$1") != '!!null' ]]
+  [[ $(front_matter_raw "has(\"$2\")" "$1") == true ]]
 }
 
 require_key() {

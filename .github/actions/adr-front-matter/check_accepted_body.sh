@@ -22,13 +22,13 @@ main() {
     _id=${_id%%_*}
     _head_files=("$_adr_dir/${_id}"_*.md)
     if [[ ! -f ${_head_files[0]} ]]; then
-      printf '%s: an accepted ADR was removed or renumbered; keep it and write a new ADR that supersedes it\n' "$_base_file" >&2
+      printf '%s: an accepted ADR was removed or renumbered; keep it and write a new ADR that supersedes it\n' "${_base_file//[^[:print:]]/?}" >&2
       _failed=1
       continue
     fi
     for _head_file in "${_head_files[@]}"; do
       if [[ $(body_of_base "$_base_sha" "$_base_file" | git hash-object --stdin) != "$(body_of_file "$_head_file" | git hash-object --stdin)" ]]; then
-        printf '%s: the body of an accepted ADR changed; write a new ADR that supersedes it\n' "$_head_file" >&2
+        printf '%s: the body of an accepted ADR changed; write a new ADR that supersedes it\n' "${_head_file//[^[:print:]]/?}" >&2
         _failed=1
       fi
     done

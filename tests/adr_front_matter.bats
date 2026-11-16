@@ -76,6 +76,25 @@ assert_rejected() {
   assert_rejected superseded-by-not-reciprocated "does not name it in supersedes"
 }
 
+@test "rejects an optional key with an empty value" {
+  assert_rejected null-value "invalid related"
+}
+
+@test "rejects a file name outside the convention" {
+  cp "$FIXTURES/valid/0006_sixth_decision.md" "$BATS_TEST_TMPDIR/0006_Bad Name.md"
+  run "$ACTION/check_front_matter.sh" "$BATS_TEST_TMPDIR"
+  [ "$status" -eq 1 ]
+  [[ $output == *"invalid file name"* ]]
+}
+
+@test "never lets a file name start a workflow command in the log" {
+  local _name=$'0006_x\n::stop-commands::tok\n.md'
+  cp "$FIXTURES/valid/0006_sixth_decision.md" "$BATS_TEST_TMPDIR/$_name"
+  run "$ACTION/check_front_matter.sh" "$BATS_TEST_TMPDIR"
+  [ "$status" -eq 1 ]
+  [[ $output != *$'\n::'* && $output != ::* ]]
+}
+
 @test "never repeats file content in a violation line" {
   run "$ACTION/check_front_matter.sh" "$FIXTURES/unknown-key"
   [[ $output != *owner* ]]
@@ -152,6 +171,15 @@ check_bodies() {
   check_bodies
   [ "$status" -eq 1 ]
   [[ $output == *"removed or renumbered"* ]]
+}
+
+@test "never lets a base file name start a workflow command in the log" {
+  setup_repo accepted
+  git rm -q docs/adr/0001_decision.md
+  mkdir -p docs/adr
+  printf -- '---\nstatus: proposed\ndate: 2026-01-01\n---\n\n# Other\n' >docs/adr/0002_other.md
+  check_bodies
+  [[ $output != *$'\n::'* && $output != ::* ]]
 }
 
 @test "allows the removal of an ADR that is not accepted at the base" {
