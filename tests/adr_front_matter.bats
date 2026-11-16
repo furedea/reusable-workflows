@@ -136,6 +136,31 @@ check_bodies() {
   [ "$status" -eq 1 ]
 }
 
+@test "rejects the removal of an accepted ADR" {
+  setup_repo accepted
+  git rm -q docs/adr/0001_decision.md
+  mkdir -p docs/adr
+  printf -- '---\nstatus: proposed\ndate: 2026-01-01\n---\n\n# Other\n' >docs/adr/0002_other.md
+  check_bodies
+  [ "$status" -eq 1 ]
+  [[ $output == *"removed or renumbered"* ]]
+}
+
+@test "rejects the renumbering of an accepted ADR" {
+  setup_repo accepted
+  git mv docs/adr/0001_decision.md docs/adr/0009_decision.md
+  check_bodies
+  [ "$status" -eq 1 ]
+  [[ $output == *"removed or renumbered"* ]]
+}
+
+@test "allows the removal of an ADR that is not accepted at the base" {
+  setup_repo proposed
+  git rm -q docs/adr/0001_decision.md
+  check_bodies
+  [ "$status" -eq 0 ]
+}
+
 @test "allows a new ADR" {
   setup_repo accepted
   printf -- '---\nstatus: proposed\ndate: 2026-01-01\n---\n\n# New\n' >docs/adr/0002_new.md

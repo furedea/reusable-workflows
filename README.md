@@ -192,8 +192,8 @@ checks run in this order, and the job fails at the first one that fails:
    - `superseded-by` present unless the status is `superseded`, and the reverse;
    - `supersedes: [X]` in one ADR when X's `superseded-by` or `partly-superseded-by` does not name it, and the
      reverse.
-4. On pull requests only: the body (everything after the front matter) of an ADR whose version at the base commit has
-   `status: accepted` must not change. Front-matter changes are allowed. The ADR is matched to its base version by the
+4. On pull requests only: an ADR whose version at the base commit has `status: accepted` must not be removed or
+   renumbered, and its body (everything after the front matter) must not change. Front-matter changes are allowed. The ADR is matched to its base version by the
    `NNNN` prefix, so a rename does not hide a change. Write a new ADR that supersedes it instead.
 
 Anything that does not match the fixed shape is a violation; nothing is interpreted (no prose metadata, no other
