@@ -120,6 +120,8 @@ jobs:
           git add old.sh new.sh "with space.sh"
           git commit -qm "error and warning in changed lines"
 
+          # With `-f=sarif`, reviewdog's local reporter prints each result that survives the diff filter as one line
+          # of SARIF JSON (level, location, ruleId), so the checks below read those fields.
           set +e
           bash -eo pipefail "$RUNNER_TEMP/scan.sh" | tee out.txt
           status="${PIPESTATUS[0]}"
@@ -142,7 +144,7 @@ jobs:
           git mv old.sh renamed.sh
           git commit -qm "rename"
           bash -eo pipefail "$RUNNER_TEMP/scan.sh" | tee out.txt
-          ! grep -q '"level":"error"' out.txt || { echo "::error::a rename failed the job"; exit 1; }
+          [[ ! -s out.txt ]] || { echo "::error::a rename reported a finding"; exit 1; }
 
   claude-review:
     uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]
