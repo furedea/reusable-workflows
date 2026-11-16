@@ -60,8 +60,8 @@ copies the rules. Model-judged rules (jev-lint) are not run: they need API keys 
   need no `if`. There is no baseline file and no scan of the whole tree.
 - **Which findings count.** The scan covers the added and modified files of the pull request, and
   [reviewdog](https://github.com/reviewdog/reviewdog) keeps the findings on added or modified lines
-  (`-filter-mode=added`) against `git diff -M HEAD^1 HEAD`: `HEAD` is the merge commit of the pull request, so the
-  line numbers are those of the scanned tree, and a pure rename changes no line. reviewdog compares the start line
+  (`-filter-mode=added`) of the diff of the pull request, which reviewdog fetches from the API; a pure rename changes
+  no line. The files to scan are those of `git diff HEAD^1 HEAD`, `HEAD` being the merge commit. reviewdog compares the start line
   of a finding, so a finding on a function counts when its first line changed. Violations that already exist in
   untouched lines are neither reported nor gating, so the first run in a repository does not fail on old code.
 - **What fails the job.** A finding with `severity: error`, the level that ADR-0021 lets block (a rule judges one
@@ -80,6 +80,7 @@ jobs:
         uses: furedea/reusable-workflows/.github/workflows/ast-grep.yml@<full-commit-sha> # <ref>
         permissions:
             contents: read
+            pull-requests: read
 ```
 
 Add `ast-grep` to `all-green`'s `needs`. Renovate moves the default `agent-config-ref` (`customManagers`), so a new
@@ -87,14 +88,13 @@ release of this repository carries new rules; pass `agent-config-ref` to pin a d
 reviewdog 0.21.0 come from the nixpkgs revision `NIXPKGS_REV` in the workflow, the revision of agent-config's
 `flake.lock`; update it together with agent-config's lock file, not with the nixpkgs pin of `nix-lint.yml`.
 
-The pipeline is `ast-grep scan --format sarif | reviewdog -f=sarif -reporter=rdjsonl -filter-mode=added | reviewdog
--f=rdjsonl -reporter=github-annotations -filter-mode=nofilter -fail-level=error`. Two reviewdog runs are needed
-because the `github-annotations` reporter does not filter by diff and the reporters that do (`github-pr-check`,
-`github-pr-review`, `github-pr-annotations`) call the GitHub API with a token. Nothing here uses the network or
-needs more than `contents: read`; the token variable the annotation reporter insists on is a placeholder.
+The scan is `ast-grep scan --format sarif | reviewdog -f=sarif -reporter=github-pr-annotations -filter-mode=added
+-fail-level=error`, the way reviewdog documents its use in GitHub Actions: it fetches the diff of the pull request
+with the job's `github.token` (`REVIEWDOG_GITHUB_API_TOKEN`), which is why the job needs `pull-requests: read` besides
+`contents: read`. The caller must grant both.
 
 `ci.yml` tests it twice: it calls the workflow on this repository's own pull requests, and the `ast-grep-fixture` job
-runs the workflow's scan step on a small repository to check that an error in changed lines fails, that an old
+runs the workflow's scan step on a small repository, with reviewdog's local reporter and `-diff` because there is no pull request to fetch, to check that an error in changed lines fails, that an old
 violation in a touched file is ignored, and that a warning only annotates.
 
 ## claude-review.yml

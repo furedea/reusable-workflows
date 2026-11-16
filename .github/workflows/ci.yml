@@ -62,9 +62,11 @@ jobs:
     uses: ./.github/workflows/ast-grep.yml # zizmor: ignore[self-repository]
     permissions:
       contents: read
+      pull-requests: read
 
   # Runs the scan step of ast-grep.yml against a small repository with a base commit and a head commit, as a pull
-  # request's merge commit would give, and checks which findings fail the job and which only annotate.
+  # request's merge commit would give, and checks which findings fail the job and which only report. There is no
+  # pull request to fetch, so reviewdog runs as its README describes for local use: `-reporter=local` with `-diff`.
   ast-grep-fixture:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -98,6 +100,8 @@ jobs:
           RULES_DIR="$PWD/agent-config-rules"
           export NIXPKGS_REV RULES_DIR
           yq '.jobs.ast-grep.steps[] | select(.name == "Scan changed lines") | .run' "$workflow" > "$RUNNER_TEMP/scan.sh"
+          grep -q -- '-reporter=github-pr-annotations' "$RUNNER_TEMP/scan.sh"
+          sed -i 's/-reporter=github-pr-annotations/-reporter=local -diff="git diff -M HEAD^1 HEAD"/' "$RUNNER_TEMP/scan.sh"
 
           cd "$(mktemp -d)"
           git init -q .
@@ -119,24 +123,24 @@ jobs:
           status="${PIPESTATUS[0]}"
           set -e
           ((status == 1)) || { echo "::error::expected the error in changed lines to fail the job, got $status"; exit 1; }
-          grep -q '^::error .*file=new.sh.*bash_function_name_snake_case' out.txt
-          grep -q '^::warning .*file=new.sh,line=5.*bash_local_underscore_prefix' out.txt
-          grep -q '^::error .*file=with space.sh' out.txt
-          ! grep -q 'old.sh' out.txt || { echo "::error::an existing violation was reported"; exit 1; }
+          grep -q '"level":"error".*"uri":"new.sh".*bash_function_name_snake_case' out.txt
+          grep -q '"level":"warning".*"uri":"new.sh".*"startLine":5.*bash_local_underscore_prefix' out.txt
+          grep -q '"level":"error".*"uri":"with space.sh"' out.txt
+          ! grep -q '"uri":"old.sh"' out.txt || { echo "::error::an existing violation was reported"; exit 1; }
 
           # Only a warning in the changed lines: annotate and pass.
           printf 'g() {\n  local y=1\n}\n' > warn.sh
           git add warn.sh
           git commit -qm "warning only"
           bash -eo pipefail "$RUNNER_TEMP/scan.sh" | tee out.txt
-          grep -q '^::warning .*file=warn.sh' out.txt
-          ! grep -q '^::error' out.txt || { echo "::error::a warning failed the job"; exit 1; }
+          grep -q '"level":"warning".*"uri":"warn.sh"' out.txt
+          ! grep -q '"level":"error"' out.txt || { echo "::error::a warning failed the job"; exit 1; }
 
           # A pure rename of a file with an existing violation changes no line.
           git mv old.sh renamed.sh
           git commit -qm "rename"
           bash -eo pipefail "$RUNNER_TEMP/scan.sh" | tee out.txt
-          ! grep -q '^::error' out.txt || { echo "::error::a rename failed the job"; exit 1; }
+          ! grep -q '"level":"error"' out.txt || { echo "::error::a rename failed the job"; exit 1; }
 
   claude-review:
     uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]

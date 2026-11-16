@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      pull-requests: read # reviewdog fetches the diff of the pull request
     env:
       # nixpkgs revision that provides ast-grep 0.42.1 and reviewdog 0.21.0, the revision in agent-config's flake.lock.
       # Update it with agent-config's, not to the head of nixos-unstable, so that CI and the agent hooks run the
@@ -50,18 +51,14 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
 
-      # HEAD is the merge commit of the pull request and HEAD^1 its base, so the diff holds exactly the lines the
-      # pull request changes, in the line numbers of the tree that is scanned.
-      #
-      # ast-grep writes SARIF, which reviewdog parses natively. The first reviewdog keeps the findings on added or
-      # modified lines (`-filter-mode=added`) and rewrites them as rdjsonl. The second turns them into workflow
-      # annotations and fails on `error`; the annotation reporter does not filter by diff by itself, and the
-      # reporter that does needs the GitHub API. Neither reaches the network, so the token below is a placeholder
-      # that the annotation reporter insists on.
+      # ast-grep writes SARIF, which reviewdog parses natively. reviewdog fetches the diff of the pull request with
+      # the token and reports the findings on added or modified lines as annotations (`-filter-mode=added`); it fails
+      # the job on `error`.
       - name: Scan changed lines
         if: github.event_name == 'pull_request'
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ github.token }}
         run: |
-          export REVIEWDOG_GITHUB_API_TOKEN=unused
           ast_grep() { nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#ast-grep" -- "$@"; }
           reviewdog() { nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#reviewdog" -- "$@"; }
 
@@ -81,5 +78,4 @@ jobs:
             exit 1
           fi
 
-          reviewdog -f=sarif -name=ast-grep -reporter=rdjsonl -filter-mode=added -diff="git diff -M HEAD^1 HEAD" <"$sarif" |
-            reviewdog -f=rdjsonl -name=ast-grep -reporter=github-annotations -filter-mode=nofilter -fail-level=error
+          reviewdog -f=sarif -name=ast-grep -reporter=github-pr-annotations -filter-mode=added -fail-level=error <"$sarif"
