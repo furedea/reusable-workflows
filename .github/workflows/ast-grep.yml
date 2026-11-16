@@ -56,7 +56,7 @@ jobs:
         run: |
           ast_grep() { nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#ast-grep" -- "$@"; }
 
-          mapfile -d '' changed < <(git diff -z --name-only --no-renames --diff-filter=ACMR HEAD^1 HEAD)
+          mapfile -d '' changed < <(git diff -z --name-only -M --diff-filter=ACMR HEAD^1 HEAD)
           if ((${#changed[@]} == 0)); then
             echo "No added or modified files."
             exit 0
@@ -67,10 +67,11 @@ jobs:
           ast_grep scan --config "$RULES_DIR/agents/hooks/lint/sgconfig.yml" --json=stream -- "${changed[@]}" >"$findings"
           status=$?
           set -e
-          # ast-grep exits 1 when it found an error-level finding; the findings are judged below, by changed line.
-          if ((status > 1)); then
+          # ast-grep exits 1 when it found an error-level finding, and also for a broken configuration or rule. An
+          # error-level finding is always in the output, so status 1 with no output is a failure to scan.
+          if ((status > 1)) || { ((status == 1)) && [[ ! -s $findings ]]; }; then
             echo "::error::ast-grep failed with exit status $status"
-            exit "$status"
+            exit 1
           fi
 
           python3 -c '
@@ -80,18 +81,23 @@ jobs:
               return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
 
           # Name the files with -z and ask for each one separately: the "+++" header of a diff quotes or pads
-          # unusual paths, so it cannot be compared with the path that ast-grep reports.
+          # unusual paths, so it cannot be compared with the path that ast-grep reports. A renamed file is diffed
+          # with its source, so that only the lines it really changes count.
           changed = {}
-          names = git("diff", "-z", "--name-only", "--no-renames", "--diff-filter=ACMR", "HEAD^1", "HEAD")
-          for path in filter(None, names.split("\0")):
-              lines = changed.setdefault(path, set())
-              for line in git("diff", "-U0", "--no-renames", "HEAD^1", "HEAD", "--", path).splitlines():
+          tokens = git("diff", "-z", "--name-status", "-M", "--diff-filter=ACMR", "HEAD^1", "HEAD").split("\0")
+          index = 0
+          while index + 1 < len(tokens):
+              paths = tokens[index + 1 : index + (3 if tokens[index][0] in "RC" else 2)]
+              index += 1 + len(paths)
+              lines = changed.setdefault(paths[-1], set())
+              for line in git("diff", "-U0", "-M", "HEAD^1", "HEAD", "--", *paths).splitlines():
                   if m := re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line):
                       start, count = int(m[1]), int(m[2] if m[2] is not None else 1)
                       lines.update(range(start, start + count))
 
-          def escape(text):
-              return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          def escape(text, property=False):
+              text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              return text.replace(":", "%3A").replace(",", "%2C") if property else text
 
           level = {"error": "error", "warning": "warning"}
           failed = False
@@ -107,7 +113,7 @@ jobs:
                   kind = level.get(f["severity"], "notice")
                   failed = failed or kind == "error"
                   text = f["message"] + (" Fix: " + f["note"] if f.get("note") else "")
-                  where = "file=%s,line=%d,endLine=%d,title=%s" % (f["file"], first, last, f["ruleId"])
+                  where = "file=%s,line=%d,endLine=%d,title=%s" % (escape(f["file"], True), first, last, escape(f["ruleId"], True))
                   print("::%s %s::%s" % (kind, where, escape(text)))
           sys.exit(1 if failed else 0)
           ' "$findings"

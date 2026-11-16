@@ -132,6 +132,12 @@ jobs:
           grep -q '^::warning file=warn.sh' out.txt
           ! grep -q '^::error' out.txt || { echo "::error::a warning failed the job"; exit 1; }
 
+          # A pure rename of a file with an existing violation changes no line.
+          git mv old.sh renamed.sh
+          git commit -qm "rename"
+          bash -eo pipefail "$RUNNER_TEMP/scan.sh" | tee out.txt
+          ! grep -q '^::error' out.txt || { echo "::error::a rename failed the job"; exit 1; }
+
   claude-review:
     uses: ./.github/workflows/claude-review.yml # zizmor: ignore[self-repository]
     permissions:
