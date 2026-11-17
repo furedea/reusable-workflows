@@ -74,7 +74,6 @@ copies the rules. Model-judged rules (jev-lint) are not run: they need API keys 
 
 | Input              | Default                       | Meaning                                              |
 | ------------------ | ----------------------------- | ---------------------------------------------------- |
-| `madr-from`        | `1`                 | Number of the first ADR checked for the MADR headings; `1` checks every ADR         |
 | `agent-config-ref` | a full SHA of agent-config    | Commit of agent-config whose rules are applied       |
 
 ```yaml
@@ -273,6 +272,7 @@ jobs:
 | ------------------ | ------------------- | ----------------------------------------------------------------------------------- |
 | `adr-dir`          | `docs/adr`          | Directory of the ADRs, relative to the repository root                              |
 | `agent-config-ref` | a pinned commit SHA | Full commit SHA of furedea/agent-config whose `adr-check` is run; Renovate bumps it |
+| `madr-from`        | `1`                 | Number of the first ADR checked for the MADR headings; `1` checks every ADR         |
 
 Add `adr-lint` to `all-green`'s `needs`. The job needs no checkout of this repository: `adr-check` comes from agent-config
 and the markdownlint settings from the caller. On pull requests the job fetches the full history for `--base`.
