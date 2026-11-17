@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.0](https://github.com/furedea/reusable-workflows/compare/v1.4.0...v1.5.0) (2026-11-17)
+
+
+### Features
+
+* add reusable ADR lint workflow ([#33](https://github.com/furedea/reusable-workflows/issues/33)) ([780a0d1](https://github.com/furedea/reusable-workflows/commit/780a0d15fbb726a47df9119cff9bd9f3b2a5d59b))
+* add reusable ast-grep workflow ([#32](https://github.com/furedea/reusable-workflows/issues/32)) ([6cc24c4](https://github.com/furedea/reusable-workflows/commit/6cc24c420db49f814f67c8bcec91867d6816e4f4))
+* **review:** leave Codex and Claude findings to required_review_thread_resolution ([#31](https://github.com/furedea/reusable-workflows/issues/31)) ([7e660f7](https://github.com/furedea/reusable-workflows/commit/7e660f751fff9bddc27e361f21d6c6e12f9b6b92))
+
 ## [1.4.0](https://github.com/furedea/reusable-workflows/compare/v1.3.0...v1.4.0) (2026-11-12)
 
 
