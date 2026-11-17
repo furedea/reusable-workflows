@@ -13,10 +13,11 @@ Shared workflows, called from the `ci.yml` of other repositories (each has a sec
 - `dependency-review.yml`
 - `nix-lint.yml`
 - `nix-check.yml`
+- `adr-lint.yml`
 - `release-pr.yml`
 - `release-publish.yml`
 
-A composite action, called as a step: `.github/actions/nix-setup` (see "nix-setup (composite action)" below).
+Composite action, called as a step: `.github/actions/nix-setup` (see "nix-setup (composite action)" below).
 
 Workflows for this repository only, not meant to be called from elsewhere:
 
@@ -225,6 +226,55 @@ jobs:
 
 Add `nix-check` to `all-green`'s `needs`.
 
+## adr-lint.yml
+
+Checks the MADR ADRs of the calling repository, whose shape is fixed by furedea/agent-config ADR-0025. The checks
+run in this order, and the job fails at the first one that fails:
+
+1. markdownlint-cli2 over `<adr-dir>/**/*.md` only, with the settings of the caller's `<adr-dir>/.markdownlint.yml`.
+   The workflow adds no settings of its own: the caller's file carries everything, for example the MADR project's
+   settings plus the heading structure (`MD043`). markdownlint-cli2 uses the nearest config, so the file must be at
+   `<adr-dir>/.markdownlint.yml` (a config in a parent directory is used only when that file is absent, with
+   markdownlint's defaults otherwise). `tests/adr-lint/fixtures/valid/.markdownlint.yml` shows the MADR settings:
+
+   ```yaml
+   default: true
+   MD013: false
+   MD024: false
+   ```
+
+2. `lychee --offline` over `<adr-dir>`: links between ADRs.
+3. `adr-check`, the command of furedea/agent-config (its ADR-0026), run with `nix run` at `agent-config-ref`. It
+   checks the front-matter shape against a JSON Schema and the cross-file rules (duplicate IDs, a reference to a
+   missing ADR, `supersedes` / `superseded-by` / `partly-superseded-by` reciprocity). On pull requests it is run with
+   `--base <base sha>` and also rejects a change of the body of an ADR that is `accepted` at the base. The rules
+   belong to agent-config: the agent hooks run the same command on edit, so CI and the hooks cannot disagree.
+
+Anything that does not match the fixed shape is a violation; nothing is interpreted (no other ADR formats).
+
+```yaml
+jobs:
+    adr-lint:
+        uses: furedea/reusable-workflows/.github/workflows/adr-lint.yml@<full-commit-sha> # <ref>
+        permissions:
+            contents: read
+        with:
+            adr-dir: docs/adr # optional
+```
+
+| Input              | Default             | Meaning                                                                             |
+| ------------------ | ------------------- | ----------------------------------------------------------------------------------- |
+| `adr-dir`          | `docs/adr`          | Directory of the ADRs, relative to the repository root                              |
+| `agent-config-ref` | a pinned commit SHA | Full commit SHA of furedea/agent-config whose `adr-check` is run; Renovate bumps it |
+
+Add `adr-lint` to `all-green`'s `needs`. The job needs no checkout of this repository: `adr-check` comes from agent-config
+and the markdownlint settings from the caller. On pull requests the job fetches the full history for `--base`.
+
+This workflow replaced a bash implementation of the front-matter checks (an action with two scripts, bats tests and
+violation fixtures). A second implementation of the same rules next to agent-config's would drift from the one the
+hooks run, so the rules and their tests live only in agent-config. `ci.yml` calls `adr-lint.yml` on the conforming
+fixtures in `tests/adr-lint/fixtures/valid`, which proves that the workflow runs end to end.
+
 ## release-pr.yml and release-publish.yml
 
 Together they release a repository with release-please, draft releases and immutable releases. A caller's
@@ -389,11 +439,11 @@ caller's repository, and a pinned `furedea/reusable-workflows/...@<sha>` cannot 
 Every tool these workflows run is pinned so that its content cannot change, not only its version string.
 Renovate updates each pin through the `customManagers` in `renovate.json`:
 
-- `nix-lint.yml`, `gha-lint.yml` and `ast-grep.yml` (reviewdog only): one nixpkgs revision in the job env
-  `NIXPKGS_REV` (the same value in all three files). It provides nixfmt, statix, deadnix and actionlint, and a nixpkgs revision fixes every input by hash.
+- `nix-lint.yml`, `gha-lint.yml`, `ast-grep.yml` (reviewdog only) and `adr-lint.yml`: one nixpkgs revision in the job env
+  `NIXPKGS_REV` (the same value in all four files). It provides nixfmt, statix, deadnix, actionlint, markdownlint-cli2 and lychee, and a nixpkgs revision fixes every input by hash.
   The nixpkgs actionlint bundles shellcheck and pyflakes. It is run with `nix run` from this revision instead of
   a release asset download, because a release asset is not checksum-verified and can be replaced. Renovate moves
-  the revision in all three files to the head of `nixos-unstable` in one pull request.
+  the revision in all four files to the head of `nixos-unstable` in one pull request.
 - `gha-lint.yml`: zizmor `version: 1.32.0`. The pinned SHA of `zizmor-action` carries a lockfile with hashes, so
   this version fixes the content of zizmor as well.
 - Nix and the Claude CLI are pinned by the SHA of the action that installs them (`install-nix-action` v31.11.3

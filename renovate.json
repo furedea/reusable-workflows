@@ -13,9 +13,9 @@
       "extractVersionTemplate": "^v(?<version>.+)$"
     },
     {
-      "description": "Update the nixpkgs revision of nix-lint, gha-lint and ast-grep to the head of nixos-unstable",
+      "description": "Update the nixpkgs revision of nix-lint, gha-lint, ast-grep and adr-lint to the head of nixos-unstable",
       "customType": "regex",
-      "managerFilePatterns": ["/^\\.github/workflows/(?:nix-lint|gha-lint|ast-grep)\\.yml$/"],
+      "managerFilePatterns": ["/^\\.github/workflows/(?:nix-lint|gha-lint|ast-grep|adr-lint)\\.yml$/"],
       "matchStrings": ["NIXPKGS_REV: (?<currentDigest>[0-9a-f]{40})"],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "nixpkgs",
@@ -23,9 +23,9 @@
       "currentValueTemplate": "nixos-unstable"
     },
     {
-      "description": "Update the agent-config commit that ast-grep.yml applies to the head of main",
+      "description": "Update the agent-config commit that ast-grep.yml and adr-lint.yml use to the head of main",
       "customType": "regex",
-      "managerFilePatterns": ["/^\\.github/workflows/ast-grep\\.yml$/"],
+      "managerFilePatterns": ["/^\\.github/workflows/(?:ast-grep|adr-lint)\\.yml$/"],
       "matchStrings": ["# renovate: depName=(?<depName>\\S+)\\n\\s+default: (?<currentDigest>[0-9a-f]{40})"],
       "datasourceTemplate": "git-refs",
       "packageNameTemplate": "https://github.com/furedea/agent-config",

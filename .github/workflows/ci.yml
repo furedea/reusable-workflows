@@ -58,6 +58,14 @@ jobs:
       - name: Check that Nix works
         run: nix --version
 
+  # Calls the reusable workflow on the conforming fixtures.
+  adr-lint:
+    uses: ./.github/workflows/adr-lint.yml # zizmor: ignore[self-repository]
+    permissions:
+      contents: read
+    with:
+      adr-dir: tests/adr-lint/fixtures/valid
+
   ast-grep:
     uses: ./.github/workflows/ast-grep.yml # zizmor: ignore[self-repository]
     permissions:
@@ -86,6 +94,7 @@ jobs:
       - nix-lint
       - nix-check
       - nix-setup
+      - adr-lint
       - ast-grep
       - claude-review
       - codex-review

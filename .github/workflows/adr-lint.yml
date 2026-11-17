@@ -1,0 +1,62 @@
+name: ADR lint (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      adr-dir:
+        description: Directory of the MADR ADRs, relative to the repository root
+        required: false
+        type: string
+        default: docs/adr
+      agent-config-ref:
+        description: Full commit SHA of furedea/agent-config whose adr-check command is run
+        type: string
+        # renovate: depName=furedea/agent-config
+        default: 138c542e3eec5ae6ec9e7080b619af6ee9b9fd0b
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  adr-lint:
+    name: adr-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      # nixos-unstable revision that provides markdownlint-cli2 and lychee, the one of nix-lint.yml and gha-lint.yml;
+      # Renovate updates it. adr-check is not pinned here: it comes from agent-config at `agent-config-ref`, so that CI
+      # runs the adr-check that the agent hooks run.
+      NIXPKGS_REV: f9a75f41be3a74eab55d3a7679d34ad6cc0da977
+      ADR_DIR: ${{ inputs.adr-dir }}
+      AGENT_CONFIG_REF: ${{ inputs.agent-config-ref }}
+      BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+    steps:
+      # The full history gives adr-check the base commit of a pull request.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      # The settings are the caller's: markdownlint-cli2 uses <adr-dir>/.markdownlint.yml (see the README).
+      - name: Run markdownlint
+        run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#markdownlint-cli2" -- "$ADR_DIR/**/*.md"
+
+      - name: Run lychee
+        run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#lychee" -- --offline --no-progress "$ADR_DIR"
+
+      - name: Run adr-check
+        run: |
+          args=()
+          if [[ -n $BASE_SHA ]]; then
+            args+=(--base "$BASE_SHA")
+          fi
+          nix run "github:furedea/agent-config/$AGENT_CONFIG_REF#adr-check" -- "${args[@]}" "$ADR_DIR"
