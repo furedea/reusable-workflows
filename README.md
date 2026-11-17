@@ -232,8 +232,9 @@ Checks the MADR ADRs of the calling repository, whose shape is fixed by furedea/
 run in this order, and the job fails at the first one that fails:
 
 1. markdownlint-cli2 over `<adr-dir>/**/*.md` only, with the settings of the caller's `<adr-dir>/.markdownlint.yml`.
-   The workflow adds no settings of its own: the caller's file carries everything, for example the MADR project's
-   settings plus the heading structure (`MD043`). markdownlint-cli2 uses the nearest config, so the file must be at
+   This step adds no settings of its own: the caller's file carries everything, for example the MADR project's
+   settings. Do not enable `MD043` there: it would apply to every ADR, including the old ones below `madr-from`, which
+   the next step checks instead. markdownlint-cli2 uses the nearest config, so the file must be at
    `<adr-dir>/.markdownlint.yml` (a config in a parent directory is used only when that file is absent, with
    markdownlint's defaults otherwise). `tests/adr-lint/fixtures/valid/.markdownlint.yml` shows the MADR settings:
 
