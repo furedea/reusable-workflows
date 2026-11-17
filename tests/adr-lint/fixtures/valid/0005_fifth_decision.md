@@ -9,3 +9,12 @@ supersedes: [ADR-0004]
 ## Context and Problem Statement
 
 Text.
+
+## Considered Options
+
+- Option A
+- Option B
+
+## Decision Outcome
+
+Chosen option: "Option A", because it is simpler.
