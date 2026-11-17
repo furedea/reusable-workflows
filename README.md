@@ -74,6 +74,7 @@ copies the rules. Model-judged rules (jev-lint) are not run: they need API keys 
 
 | Input              | Default                       | Meaning                                              |
 | ------------------ | ----------------------------- | ---------------------------------------------------- |
+| `madr-from`        | `1`                 | Number of the first ADR checked for the MADR headings; `1` checks every ADR         |
 | `agent-config-ref` | a full SHA of agent-config    | Commit of agent-config whose rules are applied       |
 
 ```yaml
@@ -243,8 +244,13 @@ run in this order, and the job fails at the first one that fails:
    MD024: false
    ```
 
-2. `lychee --offline` over `<adr-dir>`: links between ADRs.
-3. `adr-check`, the command of furedea/agent-config (its ADR-0026), run with `nix run` at `agent-config-ref`. It
+2. MD043 (the heading structure of MADR) over the ADRs numbered at or above `madr-from`, by a second markdownlint-cli2 run
+   whose config is fixed in the workflow: only `MD043`, requiring a title, `## Context and Problem Statement`,
+   `## Considered Options` and `## Decision Outcome` in that order, with other headings allowed between and after them
+   (the optional sections of MADR). The caller's `.markdownlint.yml` is not merged into it. The step is skipped when no
+   ADR qualifies. A repository whose old ADRs are not MADR-shaped sets `madr-from` to the number of its first MADR ADR.
+3. `lychee --offline` over `<adr-dir>`: links between ADRs.
+4. `adr-check`, the command of furedea/agent-config (its ADR-0026), run with `nix run` at `agent-config-ref`. It
    checks the front-matter shape against a JSON Schema and the cross-file rules (duplicate IDs, a reference to a
    missing ADR, `supersedes` / `superseded-by` / `partly-superseded-by` reciprocity). On pull requests it is run with
    `--base <base sha>` and also rejects a change of the body of an ADR that is `accepted` at the base. The rules
@@ -260,6 +266,7 @@ jobs:
             contents: read
         with:
             adr-dir: docs/adr # optional
+            madr-from: 1 # optional
 ```
 
 | Input              | Default             | Meaning                                                                             |

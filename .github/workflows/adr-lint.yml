@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: docs/adr
+      madr-from:
+        description: Number of the first ADR whose headings must follow the MADR structure; 1 checks every ADR
+        required: false
+        type: number
+        default: 1
       agent-config-ref:
         description: Full commit SHA of furedea/agent-config whose adr-check command is run
         type: string
@@ -33,6 +38,7 @@ jobs:
       # runs the adr-check that the agent hooks run.
       NIXPKGS_REV: f9a75f41be3a74eab55d3a7679d34ad6cc0da977
       ADR_DIR: ${{ inputs.adr-dir }}
+      MADR_FROM: ${{ inputs.madr-from }}
       AGENT_CONFIG_REF: ${{ inputs.agent-config-ref }}
       BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
     steps:
@@ -49,6 +55,39 @@ jobs:
       # The settings are the caller's: markdownlint-cli2 uses <adr-dir>/.markdownlint.yml (see the README).
       - name: Run markdownlint
         run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#markdownlint-cli2" -- "$ADR_DIR/**/*.md"
+
+      # MD043 over the ADRs numbered at or above `madr-from`, with a fixed config that enables only that rule. The files
+      # are copied beside the config because markdownlint-cli2 would otherwise prefer the caller's nearest config.
+      - name: Check MADR headings
+        run: |
+          madr_dir=$(mktemp -d)
+          cat > "$madr_dir/.markdownlint.yml" <<'EOF'
+          default: false
+          MD043:
+            headings:
+              - "?"
+              - "## Context and Problem Statement"
+              - "*"
+              - "## Considered Options"
+              - "*"
+              - "## Decision Outcome"
+              - "*"
+          EOF
+          count=0
+          for file in "$ADR_DIR"/[0-9][0-9][0-9][0-9]_*.md; do
+            [[ -e $file ]] || continue
+            number=$(basename "$file")
+            number=$((10#${number%%_*}))
+            if ((number >= MADR_FROM)); then
+              cp "$file" "$madr_dir/"
+              count=$((count + 1))
+            fi
+          done
+          if ((count == 0)); then
+            echo "No ADR is numbered at or above $MADR_FROM; skipping."
+            exit 0
+          fi
+          nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#markdownlint-cli2" -- "$madr_dir/*.md"
 
       - name: Run lychee
         run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#lychee" -- --offline --no-progress "$ADR_DIR"

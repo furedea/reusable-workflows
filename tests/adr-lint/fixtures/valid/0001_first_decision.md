@@ -12,3 +12,12 @@ related: [ADR-0006, other-repo/ADR-0016]  # a comment
 ## Context and Problem Statement
 
 See [the sixth](0006_sixth_decision.md).
+
+## Considered Options
+
+- Option A
+- Option B
+
+## Decision Outcome
+
+Chosen option: "Option A", because it is simpler.

@@ -66,6 +66,15 @@ jobs:
     with:
       adr-dir: tests/adr-lint/fixtures/valid
 
+  # Calls it on an old non-MADR ADR below `madr-from` and a MADR ADR at it.
+  adr-lint-madr-from:
+    uses: ./.github/workflows/adr-lint.yml # zizmor: ignore[self-repository]
+    permissions:
+      contents: read
+    with:
+      adr-dir: tests/adr-lint/fixtures/madr-from
+      madr-from: 2
+
   ast-grep:
     uses: ./.github/workflows/ast-grep.yml # zizmor: ignore[self-repository]
     permissions:
@@ -95,6 +104,7 @@ jobs:
       - nix-check
       - nix-setup
       - adr-lint
+      - adr-lint-madr-from
       - ast-grep
       - claude-review
       - codex-review
