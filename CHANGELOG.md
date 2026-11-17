@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/furedea/reusable-workflows/compare/v1.5.0...v1.6.0) (2026-11-17)
+
+
+### Features
+
+* **adr-lint:** check MADR headings on new ADRs ([#35](https://github.com/furedea/reusable-workflows/issues/35)) ([de5695a](https://github.com/furedea/reusable-workflows/commit/de5695a8dad421257cde7fccb26739255732c241))
+
 ## [1.5.0](https://github.com/furedea/reusable-workflows/compare/v1.4.0...v1.5.0) (2026-11-17)
 
 
