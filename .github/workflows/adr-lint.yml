@@ -46,25 +46,9 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
 
-      # markdownlint-cli2 applies the nearest config of a directory (also one in a parent directory) instead of merging
-      # it with --config, so the settings are placed in <adr-dir>/.markdownlint.yml inside this job's workspace: the
-      # MADR base alone, or the caller's file made to extend it (the caller's keys then win over the base).
+      # The settings are the caller's: markdownlint-cli2 uses <adr-dir>/.markdownlint.yml (see the README).
       - name: Run markdownlint
-        run: |
-          base="$RUNNER_TEMP/markdownlint-base.yml"
-          caller="$ADR_DIR/.markdownlint.yml"
-          # The MADR project's own settings.
-          printf '%s\n' 'default: true' 'MD013: false' 'MD024: false' >"$base"
-          if [[ ! -f $caller ]]; then
-            cp "$base" "$caller"
-          elif grep -Eq '^["'"'"']?extends["'"'"']?[[:space:]]*:' "$caller"; then
-            echo "::error::$ADR_DIR/.markdownlint.yml has its own extends; it cannot be combined with the MADR base settings. Put MD013: false and MD024: false in the file or in the config it extends."
-            exit 1
-          else
-            { printf 'extends: %s\n' "$base"; sed '1{/^---[[:space:]]*$/d;}' "$caller"; } >"$RUNNER_TEMP/markdownlint-caller.yml"
-            cp "$RUNNER_TEMP/markdownlint-caller.yml" "$caller"
-          fi
-          nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#markdownlint-cli2" -- "$ADR_DIR/**/*.md"
+        run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#markdownlint-cli2" -- "$ADR_DIR/**/*.md"
 
       - name: Run lychee
         run: nix run "github:NixOS/nixpkgs/$NIXPKGS_REV#lychee" -- --offline --no-progress "$ADR_DIR"

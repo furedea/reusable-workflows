@@ -231,14 +231,18 @@ Add `nix-check` to `all-green`'s `needs`.
 Checks the MADR ADRs of the calling repository, whose shape is fixed by furedea/agent-config ADR-0025. The checks
 run in this order, and the job fails at the first one that fails:
 
-1. markdownlint-cli2 over `<adr-dir>/**/*.md` only. The base settings are the MADR project's own (`default: true`,
-   `MD013` and `MD024` off). markdownlint applies the nearest config (also one in a parent directory) instead of
-   merging it with `--config`, so the job places the settings in `<adr-dir>/.markdownlint.yml` inside its own
-   workspace: the base alone, or, when the caller has that file (for example `MD043` for the heading structure), the
-   caller's file made to `extends` the base, so the caller's keys win. A caller file with its own top-level `extends`
-   fails the job with a message, because the base cannot be placed under it; put `MD013: false` and `MD024: false`
-   in that file or in the config it extends. A config in a parent directory of `<adr-dir>` is not used, and only
-   the name `.markdownlint.yml` is handled.
+1. markdownlint-cli2 over `<adr-dir>/**/*.md` only, with the settings of the caller's `<adr-dir>/.markdownlint.yml`.
+   The workflow adds no settings of its own: the caller's file carries everything, for example the MADR project's
+   settings plus the heading structure (`MD043`). markdownlint-cli2 uses the nearest config, so the file must be at
+   `<adr-dir>/.markdownlint.yml` (a config in a parent directory is used only when that file is absent, with
+   markdownlint's defaults otherwise). `tests/adr-lint/fixtures/valid/.markdownlint.yml` shows the MADR settings:
+
+   ```yaml
+   default: true
+   MD013: false
+   MD024: false
+   ```
+
 2. `lychee --offline` over `<adr-dir>`: links between ADRs.
 3. `adr-check`, the command of furedea/agent-config (its ADR-0026), run with `nix run` at `agent-config-ref`. It
    checks the front-matter shape against a JSON Schema and the cross-file rules (duplicate IDs, a reference to a
@@ -263,9 +267,8 @@ jobs:
 | `adr-dir`          | `docs/adr`          | Directory of the ADRs, relative to the repository root                              |
 | `agent-config-ref` | a pinned commit SHA | Full commit SHA of furedea/agent-config whose `adr-check` is run; Renovate bumps it |
 
-Add `adr-lint` to `all-green`'s `needs`. The job needs no checkout of this repository: the markdownlint base settings
-are written by the step, and `adr-check` comes from agent-config. On pull requests the job fetches the full history
-for `--base`.
+Add `adr-lint` to `all-green`'s `needs`. The job needs no checkout of this repository: `adr-check` comes from agent-config
+and the markdownlint settings from the caller. On pull requests the job fetches the full history for `--base`.
 
 This workflow replaced a bash implementation of the front-matter checks (an action with two scripts, bats tests and
 violation fixtures). A second implementation of the same rules next to agent-config's would drift from the one the
